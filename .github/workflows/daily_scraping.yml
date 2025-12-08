@@ -56,8 +56,11 @@ jobs:
         GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
       run: |
         echo "📁 Working directory: $(pwd)"
-        echo "📁 Repository content:"
+        echo "📁 Repository structure:"
         ls -la
+        echo ""
+        echo "📁 Contents of scripts_py directory:"
+        ls -la scripts_py/ 2>/dev/null || echo "scripts_py directory not found or empty"
         
         echo "🚀 Starting MediaMarkt ebooks scraping..."
         echo "🔄 Configuring Google Drive..."
@@ -73,38 +76,35 @@ jobs:
         # Create directory for results
         mkdir -p scraping_results
         
-        # Find and execute the Python script
-        # Check common locations for the script
-        if [ -f "scrip_ebooks_01.py" ]; then
-          echo "📄 Found script in root: scrip_ebooks_01.py"
-          SCRIPT_PATH="scrip_ebooks_01.py"
-        elif [ -f "scraping_scripts/scrip_ebooks_01.py" ]; then
-          echo "📄 Found script in scraping_scripts folder"
-          SCRIPT_PATH="scraping_scripts/scrip_ebooks_01.py"
-        elif [ -f "scripts/scrip_ebooks_01.py" ]; then
-          echo "📄 Found script in scripts folder"
-          SCRIPT_PATH="scripts/scrip_ebooks_01.py"
-        elif [ -f "src/scrip_ebooks_01.py" ]; then
-          echo "📄 Found script in src folder"
-          SCRIPT_PATH="src/scrip_ebooks_01.py"
+        # Check for the script in scripts_py directory
+        if [ -f "scripts_py/scrip_ebooks_01.py" ]; then
+          echo "✅ Found script at: scripts_py/scrip_ebooks_01.py"
+          SCRIPT_PATH="scripts_py/scrip_ebooks_01.py"
+        elif [ -f "scripts_py/scrip_ebooks.py" ]; then
+          echo "✅ Found script at: scripts_py/scrip_ebooks.py"
+          SCRIPT_PATH="scripts_py/scrip_ebooks.py"
         else
-          echo "❌ Script not found. Please check the repository structure."
-          echo "🔍 Looking for script files..."
-          find . -name "*.py" | grep -i ebook
+          echo "❌ Script not found in scripts_py directory."
+          echo "🔍 Looking for Python files in scripts_py..."
+          find scripts_py -name "*.py" 2>/dev/null || echo "No Python files found in scripts_py"
+          echo ""
+          echo "🔍 Looking for script files in entire repository..."
+          find . -name "*ebook*.py" -type f 2>/dev/null || echo "No ebook scraping scripts found"
           exit 1
         fi
         
         # Execute the script
+        echo "🚀 Executing script: $SCRIPT_PATH"
         python $SCRIPT_PATH
         
         echo "✅ Script executed. Checking results..."
         
         # List generated files
-        echo "📄 Generated files:"
+        echo "📄 Generated files in scraping_results/:"
         ls -la scraping_results/ 2>/dev/null || echo "No results in scraping_results/"
         echo ""
         echo "📄 All CSV files in repository:"
-        find . -name "*.csv" -type f 2>/dev/null || echo "No CSV files found"
+        find . -name "*.csv" -type f 2>/dev/null | head -20 || echo "No CSV files found"
         
     - name: Upload results as artifacts
       uses: actions/upload-artifact@v4
@@ -120,3 +120,9 @@ jobs:
       run: |
         echo "❌ MediaMarkt scraping has failed"
         echo "Check the logs for more details"
+        echo ""
+        echo "Possible issues:"
+        echo "1. Script not found in scripts_py directory"
+        echo "2. Google Drive credentials missing or incorrect"
+        echo "3. Website structure changed"
+        echo "4. Chrome installation failed"
