@@ -59,8 +59,8 @@ jobs:
         echo "📁 Repository structure:"
         ls -la
         echo ""
-        echo "📁 Contents of scripts_py directory:"
-        ls -la scripts_py/ 2>/dev/null || echo "scripts_py directory not found or empty"
+        echo "📁 Contents of scrips_py directory:"
+        ls -la scrips_py/ 2>/dev/null || echo "scrips_py directory not found or empty"
         
         echo "🚀 Starting MediaMarkt ebooks scraping..."
         echo "🔄 Configuring Google Drive..."
@@ -69,24 +69,24 @@ jobs:
         if [ -z "$GOOGLE_CREDENTIALS_JSON" ]; then
           echo "⚠️  WARNING: No Google Drive credentials configured"
           echo "ℹ️   The script will run but won't update Google Drive"
-        else
+        else:
           echo "✅ Google Drive credentials configured"
         fi
         
         # Create directory for results
         mkdir -p scraping_results
         
-        # Check for the script in scripts_py directory
-        if [ -f "scripts_py/scrip_ebooks_01.py" ]; then
-          echo "✅ Found script at: scripts_py/scrip_ebooks_01.py"
-          SCRIPT_PATH="scripts_py/scrip_ebooks_01.py"
-        elif [ -f "scripts_py/scrip_ebooks.py" ]; then
-          echo "✅ Found script at: scripts_py/scrip_ebooks.py"
-          SCRIPT_PATH="scripts_py/scrip_ebooks.py"
+        # Check for the script in scrips_py directory
+        if [ -f "scrips_py/scrip_ebooks_01.py" ]; then
+          echo "✅ Found script at: scrips_py/scrip_ebooks_01.py"
+          SCRIPT_PATH="scrips_py/scrip_ebooks_01.py"
+        elif [ -f "scrips_py/scrip_ebooks.py" ]; then
+          echo "✅ Found script at: scrips_py/scrip_ebooks.py"
+          SCRIPT_PATH="scrips_py/scrip_ebooks.py"
         else
-          echo "❌ Script not found in scripts_py directory."
-          echo "🔍 Looking for Python files in scripts_py..."
-          find scripts_py -name "*.py" 2>/dev/null || echo "No Python files found in scripts_py"
+          echo "❌ Script not found in scrips_py directory."
+          echo "🔍 Looking for Python files in scrips_py..."
+          find scrips_py -name "*.py" 2>/dev/null || echo "No Python files found in scrips_py"
           echo ""
           echo "🔍 Looking for script files in entire repository..."
           find . -name "*ebook*.py" -type f 2>/dev/null || echo "No ebook scraping scripts found"
@@ -122,7 +122,7 @@ jobs:
         echo "Check the logs for more details"
         echo ""
         echo "Possible issues:"
-        echo "1. Script not found in scripts_py directory"
+        echo "1. Script not found in scrips_py directory"
         echo "2. Google Drive credentials missing or incorrect"
         echo "3. Website structure changed"
         echo "4. Chrome installation failed"
