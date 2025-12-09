@@ -1,4 +1,4 @@
-name: Daily Scraping Job
+name: Daily ebooks Scraping Job
 
 on:
   schedule:
@@ -77,9 +77,9 @@ jobs:
         mkdir -p scraping_results
         
         # Check for the script in scrips_py directory
-        if [ -f "scrips_py/scrip_ebooks_01.py" ]; then
-          echo "✅ Found script at: scrips_py/scrip_ebooks_01.py"
-          SCRIPT_PATH="scrips_py/scrip_ebooks_01.py"
+        if [ -f "scrips_py/01_scrip_ebooks.py" ]; then
+          echo "✅ Found script at: scrips_py/01_scrip_ebooks.py"
+          SCRIPT_PATH="scrips_py/01_scrip_ebooks.py"
         elif [ -f "scrips_py/scrip_ebooks.py" ]; then
           echo "✅ Found script at: scrips_py/scrip_ebooks.py"
           SCRIPT_PATH="scrips_py/scrip_ebooks.py"
