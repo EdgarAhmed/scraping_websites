@@ -143,6 +143,7 @@ def subir_archivo_drive(service, nombre_archivo, contenido, folder_id, file_id=N
 def actualizar_csv_drive(df_nuevo, folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7", nombre_archivo="ebooks_mediamarkt.csv"):
     """
     Actualiza un archivo CSV en Google Drive combinando datos existentes con nuevos
+    NO elimina duplicados entre días diferentes - conserva historial diario
     """
     print("\n" + "="*60)
     print("ACTUALIZANDO GOOGLE DRIVE")
@@ -170,25 +171,42 @@ def actualizar_csv_drive(df_nuevo, folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7"
                 df_existente = pd.read_csv(io.StringIO(contenido_existente))
                 print(f"📊 Registros existentes en Drive: {len(df_existente)}")
                 
-                # Preparar nuevo DataFrame para combinación
-                # Asegurar que las columnas coincidan
-                columnas_comunes = list(set(df_existente.columns) & set(df_nuevo.columns))
+                # Verificar si hay columnas comunes
+                columnas_existente = set(df_existente.columns)
+                columnas_nuevo = set(df_nuevo.columns)
+                
+                # Encontrar columnas comunes
+                columnas_comunes = list(columnas_existente & columnas_nuevo)
                 
                 if columnas_comunes:
-                    # Seleccionar solo columnas comunes
-                    df_nuevo_compatible = df_nuevo[columnas_comunes]
-                    df_existente_compatible = df_existente[columnas_comunes]
+                    print(f"📋 Columnas comunes: {columnas_comunes}")
                     
-                    # Combinar dataframes
+                    # Seleccionar solo columnas comunes de ambos DataFrames
+                    df_existente_compatible = df_existente[columnas_comunes]
+                    df_nuevo_compatible = df_nuevo[columnas_comunes]
+                    
+                    # COMBINAR sin eliminar duplicados entre días diferentes
+                    # Solo eliminar duplicados EXACTOS (mismos datos en todas las columnas)
                     df_combinado = pd.concat([df_existente_compatible, df_nuevo_compatible], ignore_index=True)
                     
-                    # Eliminar duplicados (si los hay)
-                    df_combinado = df_combinado.drop_duplicates(subset=['nombre', 'precio', 'fecha_extraccion'], keep='last')
+                    # ELIMINAR SOLO duplicados exactos (mismo producto, precio y fecha)
+                    # Esto evita duplicados de la MISMA ejecución
+                    duplicados_exactos = df_combinado.duplicated(keep='first').sum()
+                    df_combinado = df_combinado.drop_duplicates(keep='first')
                     
+                    print(f"🗑️  Duplicados exactos eliminados: {duplicados_exactos}")
                     print(f"📈 Registros después de combinar: {len(df_combinado)}")
                     print(f"➕ Nuevos registros añadidos: {len(df_nuevo)}")
+                    
+                    # Calcular cuántos registros son de hoy
+                    fecha_hoy = datetime.now().strftime("%Y-%m-%d")
+                    registros_hoy = df_combinado[df_combinado['fecha_extraccion'].str.contains(fecha_hoy)].shape[0]
+                    print(f"📅 Registros de hoy ({fecha_hoy}): {registros_hoy}")
+                    
                 else:
                     print("⚠️  No hay columnas comunes entre los DataFrames")
+                    print(f"  Columnas existentes: {list(columnas_existente)}")
+                    print(f"  Columnas nuevas: {list(columnas_nuevo)}")
                     df_combinado = df_nuevo
             else:
                 print("⚠️  No se pudo descargar el archivo existente, creando uno nuevo")
@@ -207,6 +225,18 @@ def actualizar_csv_drive(df_nuevo, folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7"
         if archivo:
             print(f"✅ Google Drive actualizado exitosamente")
             print(f"📊 Total de registros en archivo combinado: {len(df_combinado)}")
+            
+            # Estadísticas adicionales
+            if 'fecha_extraccion' in df_combinado.columns:
+                fechas_unicas = df_combinado['fecha_extraccion'].str[:10].nunique()
+                print(f"📅 Días diferentes en el dataset: {fechas_unicas}")
+                
+                # Mostrar distribución por fecha
+                print("\n📊 Distribución por fecha:")
+                distribucion = df_combinado['fecha_extraccion'].str[:10].value_counts().sort_index()
+                for fecha, cantidad in distribucion.items():
+                    print(f"  {fecha}: {cantidad} registros")
+            
             return True
         else:
             print("❌ Error actualizando Google Drive")
@@ -227,11 +257,11 @@ def setup_chrome_options():
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+    chrome_options.add_argument(""--disable-dev-shm-usage")
+    chrome_options.add_argument(""--disable-gpu")
+    chrome_options.add_argument(""--window-size=1920,1080")
+    chrome_options.add_argument(""--disable-blink-features=AutomationControlled")
+    chrome_options.add_argument(""--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
     
     # Deshabilitar imágenes para acelerar
     prefs = {"profile.managed_default_content_settings.images": 2}
@@ -550,12 +580,15 @@ def main():
             print("❌ Error creando DataFrame. Terminando ejecución.")
             return False
         
-        # Paso 4: Actualizar Google Drive con append
-        print("\n🔄 Actualizando Google Drive...")
+        # Paso 4: Actualizar Google Drive con APPEND (no overwrite)
+        print("\n🔄 Actualizando Google Drive (APPEND mode)...")
+        print("📌 Nota: Los datos se añadirán, NO se sobrescribirán")
+        print("📌 Se mantendrá el historial día a día")
+        
         drive_actualizado = actualizar_csv_drive(df)
         
         if drive_actualizado:
-            print("✅ Google Drive actualizado exitosamente")
+            print("✅ Google Drive actualizado exitosamente (APPEND)")
         else:
             print("⚠️  No se pudo actualizar Google Drive (puede ser falta de credenciales)")
         
@@ -563,8 +596,9 @@ def main():
         print("RESUMEN EJECUCIÓN")
         print("="*60)
         print(f"✅ Scraping completado exitosamente")
-        print(f"📦 Productos obtenidos: {len(df)}")
+        print(f"📦 Productos obtenidos hoy: {len(df)}")
         print(f"📁 Archivo local generado: {archivo_csv}")
+        print(f"💾 Google Drive: Datos añadidos al archivo histórico")
         
         return True
             
