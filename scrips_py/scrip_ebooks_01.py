@@ -186,11 +186,9 @@ def actualizar_csv_drive(df_nuevo, folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7"
                     df_nuevo_compatible = df_nuevo[columnas_comunes]
                     
                     # COMBINAR sin eliminar duplicados entre días diferentes
-                    # Solo eliminar duplicados EXACTOS (mismos datos en todas las columnas)
                     df_combinado = pd.concat([df_existente_compatible, df_nuevo_compatible], ignore_index=True)
                     
-                    # ELIMINAR SOLO duplicados exactos (mismo producto, precio y fecha)
-                    # Esto evita duplicados de la MISMA ejecución
+                    # ELIMINAR SOLO duplicados exactos (misma ejecución)
                     duplicados_exactos = df_combinado.duplicated(keep='first').sum()
                     df_combinado = df_combinado.drop_duplicates(keep='first')
                     
@@ -198,7 +196,7 @@ def actualizar_csv_drive(df_nuevo, folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7"
                     print(f"📈 Registros después de combinar: {len(df_combinado)}")
                     print(f"➕ Nuevos registros añadidos: {len(df_nuevo)}")
                     
-                    # Calcular cuántos registros son de hoy
+                    # Registros de hoy
                     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
                     registros_hoy = df_combinado[df_combinado['fecha_extraccion'].str.contains(fecha_hoy)].shape[0]
                     print(f"📅 Registros de hoy ({fecha_hoy}): {registros_hoy}")
@@ -226,12 +224,10 @@ def actualizar_csv_drive(df_nuevo, folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7"
             print(f"✅ Google Drive actualizado exitosamente")
             print(f"📊 Total de registros en archivo combinado: {len(df_combinado)}")
             
-            # Estadísticas adicionales
             if 'fecha_extraccion' in df_combinado.columns:
                 fechas_unicas = df_combinado['fecha_extraccion'].str[:10].nunique()
                 print(f"📅 Días diferentes en el dataset: {fechas_unicas}")
                 
-                # Mostrar distribución por fecha
                 print("\n📊 Distribución por fecha:")
                 distribucion = df_combinado['fecha_extraccion'].str[:10].value_counts().sort_index()
                 for fecha, cantidad in distribucion.items():
@@ -257,13 +253,12 @@ def setup_chrome_options():
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-dev-shm-usage")   # ← FIXED HERE
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     
-    # Deshabilitar imágenes para acelerar
     prefs = {"profile.managed_default_content_settings.images": 2}
     chrome_options.add_experimental_option("prefs", prefs)
     
@@ -277,7 +272,6 @@ def mediamark_mob_(url):
         driver = webdriver.Chrome(service=service, options=chrome_options)
         
         driver.get(url)
-        # Removed maximize_window for headless
         time.sleep(2)
 
         # Aceptar cookies
@@ -302,18 +296,15 @@ def obtener_total_articulos(driver):
     EXACTLY like old notebook
     """
     try:
-        # Buscar el elemento que contiene el total de artículos
         elemento_total = driver.find_element(By.CSS_SELECTOR, 'span.sc-94eb08bc-0.AKpzk')
         texto_total = elemento_total.text
         
-        # Extraer solo los números del texto (ej: "(3866 artículos)" -> 3866)
         numero_total = re.search(r'\((\d+)', texto_total)
         
         if numero_total:
             total_articulos = int(numero_total.group(1))
             print(f"📊 Total de artículos encontrados: {total_articulos}")
             
-            # Calcular número de páginas necesarias (cada página muestra 12 productos)
             productos_por_pagina = 12
             total_paginas = math.ceil(total_articulos / productos_por_pagina)
             print(f"📄 Total de páginas a recorrer: {total_paginas}")
@@ -321,34 +312,30 @@ def obtener_total_articulos(driver):
             return total_articulos, total_paginas
         else:
             print("❌ No se pudo extraer el número total de artículos")
-            return None, 10  # Valor por defecto
+            return None, 10
     
     except Exception as e:
         print(f"❌ Error obteniendo el total de artículos: {e}")
-        return None, 10  # Valor por defecto en caso de error
+        return None, 10
 
 def extraer_precio_producto(contenedor_producto):
     """
     Función específica para extraer el precio correcto de un producto
-    Prioriza el precio final sobre el precio original tachado
     EXACTLY like old notebook
     """
     try:
-        # PRIMERO: Buscar precio final (rebajado) - span con clase dYbTef
         try:
             precio_final = contenedor_producto.find_element(By.CSS_SELECTOR, 'span.sc-94eb08bc-0.dYbTef.sc-8a3a8cd8-2.csCDkt')
             return precio_final.text
         except:
             pass
         
-        # SEGUNDO: Buscar precio normal - span con clase OhHlB
         try:
             precio_normal = contenedor_producto.find_element(By.CSS_SELECTOR, 'span.sc-94eb08bc-0.OhHlB.sc-8a3a8cd8-2.csCDkt')
             return precio_normal.text
         except:
             pass
         
-        # TERCERO: Buscar cualquier precio que contenga €
         try:
             elementos_precio = contenedor_producto.find_elements(By.XPATH, ".//*[contains(text(), '€')]")
             for elem in elementos_precio:
@@ -371,15 +358,12 @@ def extraer_productos_pagina(driver):
     productos_pagina = []
     
     try:
-        # Buscar todos los títulos de productos en la página actual
         productos_titulos = driver.find_elements(By.CSS_SELECTOR, 'p[data-test="product-title"]')
         
         print(f"   🔍 Encontrados {len(productos_titulos)} productos en la página")
         
-        # Para cada título, encontrar su contenedor y extraer información
         for i, titulo in enumerate(productos_titulos):
             try:
-                # Encontrar el contenedor del producto
                 contenedor = titulo
                 for _ in range(5):
                     contenedor = contenedor.find_element(By.XPATH, "./..")
@@ -390,7 +374,6 @@ def extraer_productos_pagina(driver):
                     except:
                         continue
                 
-                # Extraer nombre y precio
                 nombre = titulo.text
                 precio = extraer_precio_producto(contenedor)
                 
@@ -411,27 +394,23 @@ def extraer_productos_pagina(driver):
 
 def extraer_productos(driver):
     """
-    Extrae todos los productos
-    EXACTLY like old notebook - 5 sorting criteria, 30 pages each
+    Extrae todos los productos EXACTLY like old notebook
     """
-    # Lista para almacenar todos los productos
     productos_data = []
     contador_global = 1
     
     try:
-        # OBTENER TOTAL DE ARTÍCULOS
         total_articulos, total_paginas = obtener_total_articulos(driver)
         
         print(f"🔄 Total de artículos: {total_articulos}")
         print(f"📄 Páginas calculadas: {total_paginas}")
         
-        # Diferentes criterios de ordenación para obtener todos los productos
         criterios_ordenacion = [
-            "currentprice+desc",    # Precio descendente
-            "currentprice+asc",     # Precio ascendente  
-            "relevance",            # Relevancia
-            "name+asc",             # Nombre A-Z
-            "name+desc"             # Nombre Z-A
+            "currentprice+desc",
+            "currentprice+asc",
+            "relevance",
+            "name+asc",
+            "name+desc"
         ]
         
         productos_unicos = set()
@@ -439,20 +418,15 @@ def extraer_productos(driver):
         for criterio in criterios_ordenacion:
             print(f"🎯 Usando criterio de ordenación: {criterio}")
             
-            for pagina in range(1, 31):  # Máximo 30 páginas por criterio
+            for pagina in range(1, 31):
                 try:
                     print(f"📖 Página {pagina}/30 - Criterio: {criterio}")
                     
-                    # URL de ebooks
                     url_pagina = f"https://www.mediamarkt.es/es/category/ebooks-249.html?sort={criterio}&page={pagina}"
                     
-                    # Navegar a la página
                     driver.get(url_pagina)
-                    
-                    # Esperar a que cargue la página - EXACT timing
                     time.sleep(2)
                     
-                    # Verificar que la página cargó correctamente
                     try:
                         WebDriverWait(driver, 10).until(
                             EC.presence_of_element_located((By.CSS_SELECTOR, 'p[data-test="product-title"]'))
@@ -461,10 +435,8 @@ def extraer_productos(driver):
                         print(f"❌ La página {pagina} no cargó correctamente, pasando a siguiente criterio")
                         break
                     
-                    # Extraer productos de la página actual
                     productos_pagina = extraer_productos_pagina(driver)
                     
-                    # Agregar solo productos nuevos
                     for producto in productos_pagina:
                         nombre_producto = producto['nombre']
                         if nombre_producto not in productos_unicos:
@@ -475,12 +447,10 @@ def extraer_productos(driver):
                     
                     print(f"✅ Página {pagina}: {len(productos_pagina)} productos, Total únicos: {len(productos_data)}")
                     
-                    # Si la página tiene menos de 12 productos, es la última
                     if len(productos_pagina) < 12:
                         print("📝 Última página detectada")
                         break
-                        
-                    # Pequeña pausa entre páginas - EXACT timing
+                    
                     time.sleep(1)
                     
                 except Exception as e:
@@ -508,21 +478,16 @@ def guardar_en_dataframe(productos_data):
         print("No hay datos para guardar")
         return None
     
-    # Crear DataFrame (ya vienen sin duplicados)
     df = pd.DataFrame(productos_data)
     
-    # Añadir fecha y hora de extracción
     fecha_extraccion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     df['fecha_extraccion'] = fecha_extraccion
     
-    # Reordenar columnas
     column_order = ['fecha_extraccion', 'numero', 'nombre', 'precio']
     df = df[column_order]
     
-    # Crear carpeta para resultados si no existe
     os.makedirs("scraping_results", exist_ok=True)
     
-    # Nombre del archivo
     nombre_archivo = f"scraping_results/ebooks_mediamarkt_completo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     file_path = nombre_archivo
     df.to_csv(file_path, index=False, encoding='utf-8')
@@ -530,14 +495,12 @@ def guardar_en_dataframe(productos_data):
     print(f"\n✅ Datos guardados en: {file_path}")
     print(f"📊 Total de productos únicos: {len(df)}")
     
-    # Mostrar resumen
     productos_con_precio = len(df[df['precio'].str.contains('€', na=False)])
     productos_sin_precio = len(df) - productos_con_precio
     
     print(f"💰 Productos con precio: {productos_con_precio}")
     print(f"❌ Productos sin precio: {productos_sin_precio}")
     
-    # Mostrar primeras filas
     print("\n📋 Primeras 5 filas del DataFrame:")
     print(df.head())
     
@@ -558,29 +521,24 @@ def main():
     driver = None
     
     try:
-        # URL objetivo
         url = "https://www.mediamarkt.es/es/category/ebooks-249.html?sort=currentprice+desc"
         
         print(f"\n🌐 Accediendo a: {url}")
         
-        # Paso 1: Inicializar navegador
         driver = mediamark_mob_(url)
         
-        # Paso 2: Extraer productos (EXACTLY like old notebook)
         productos_data = extraer_productos(driver)
         
         if not productos_data:
             print("No se extrajeron productos")
             return False
         
-        # Paso 3: Guardar en DataFrame
         df, archivo_csv = guardar_en_dataframe(productos_data)
         
         if df is None:
             print("❌ Error creando DataFrame. Terminando ejecución.")
             return False
         
-        # Paso 4: Actualizar Google Drive con APPEND (no overwrite)
         print("\n🔄 Actualizando Google Drive (APPEND mode)...")
         print("📌 Nota: Los datos se añadirán, NO se sobrescribirán")
         print("📌 Se mantendrá el historial día a día")
@@ -609,7 +567,6 @@ def main():
         return False
         
     finally:
-        # Cerrar el navegador
         if driver:
             try:
                 driver.quit()
@@ -622,8 +579,5 @@ def main():
         print("="*60)
 
 if __name__ == "__main__":
-    # Ejecutar scraping
     success = main()
-    
-    # Salir con código apropiado para CI/CD
     sys.exit(0 if success else 1)
