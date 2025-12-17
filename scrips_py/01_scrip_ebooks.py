@@ -106,6 +106,76 @@ def extraer_marca_ebook(nombre):
     return 'Otra marca'
 
 # ============================================
+# FUNCIÓN PARA LIMPIAR PRECIOS
+# ============================================
+
+def limpiar_columna_precio(df):
+    """
+    Limpia la columna precio para extraer valores numéricos
+    """
+    print("\n" + "="*60)
+    print("LIMPIANDO COLUMNA PRECIO")
+    print("="*60)
+    
+    try:
+        # Guardar copia del precio original antes de limpiar
+        if 'precio_original' not in df.columns:
+            df['precio_original'] = df['precio'].copy()
+        
+        # Estadísticas antes de limpiar
+        print(f"📊 Total de registros: {len(df)}")
+        print(f"💰 Valores únicos antes de limpiar: {df['precio'].nunique()}")
+        print(f"❌ Valores nulos antes de limpiar: {df['precio'].isna().sum()}")
+        
+        # Limpiar la columna precio
+        df['precio'] = (
+            df['precio']
+            .astype(str)
+            .str.replace(r'[^\d,]', '', regex=True)  # Eliminar todo excepto números y comas
+            .str.replace(',', '.', regex=False)  # Convertir comas a puntos
+        )
+        
+        # Convertir a float
+        df['precio'] = pd.to_numeric(
+            df['precio'], 
+            errors='coerce'
+        )
+        
+        # Estadísticas después de limpiar
+        print(f"✅ Columna precio limpiada exitosamente")
+        print(f"💰 Valores únicos después de limpiar: {df['precio'].nunique()}")
+        print(f"❌ Valores nulos después de limpiar: {df['precio'].isna().sum()}")
+        print(f"📈 Rango de precios: {df['precio'].min():.2f}€ - {df['precio'].max():.2f}€")
+        print(f"📊 Precio promedio: {df['precio'].mean():.2f}€")
+        print(f"📋 Precio mediano: {df['precio'].median():.2f}€")
+        
+        # Mostrar primeros valores
+        print("\n📋 Primeros 5 valores de precio limpios:")
+        print(df[['precio_original', 'precio']].head())
+        
+        # Contar productos sin precio válido
+        productos_sin_precio_valido = df['precio'].isna().sum()
+        productos_con_precio_valido = len(df) - productos_sin_precio_valido
+        
+        print(f"\n📊 Productos con precio válido: {productos_con_precio_valido}")
+        print(f"⚠️  Productos sin precio válido: {productos_sin_precio_valido}")
+        
+        if productos_sin_precio_valido > 0:
+            print(f"\n🔍 Productos sin precio válido (primeros 5):")
+            sin_precio = df[df['precio'].isna()][['nombre', 'precio_original']].head()
+            if not sin_precio.empty:
+                for idx, row in sin_precio.iterrows():
+                    print(f"   - {row['nombre'][:50]}... : {row['precio_original']}")
+        
+        return df
+        
+    except Exception as e:
+        print(f"❌ Error limpiando columna precio: {e}")
+        import traceback
+        traceback.print_exc()
+        return df
+
+# ============================================
 # CONFIGURACIÓN DE GOOGLE DRIVE
 # ============================================
 
@@ -571,8 +641,13 @@ def guardar_en_dataframe(productos_data):
     fecha_extraccion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     df['fecha_extraccion'] = fecha_extraccion
     
+    # Limpiar columna precio antes de guardar
+    df = limpiar_columna_precio(df)
+    
     # Orden de columnas con la nueva columna 'marca'
     column_order = ['fecha_extraccion', 'numero', 'nombre', 'marca', 'precio']
+    if 'precio_original' in df.columns:
+        column_order.append('precio_original')
     df = df[column_order]
     
     os.makedirs("scraping_results", exist_ok=True)
@@ -593,11 +668,18 @@ def guardar_en_dataframe(productos_data):
     if len(distribucion_marcas) > 10:
         print(f"   ... y {len(distribucion_marcas) - 10} marcas más")
     
-    productos_con_precio = len(df[df['precio'].str.contains('€', na=False)])
-    productos_sin_precio = len(df) - productos_con_precio
+    # Estadísticas de precios
+    productos_con_precio_valido = df['precio'].notna().sum()
+    productos_sin_precio_valido = df['precio'].isna().sum()
     
-    print(f"\n💰 Productos con precio: {productos_con_precio}")
-    print(f"❌ Productos sin precio: {productos_sin_precio}")
+    print(f"\n💰 Productos con precio válido: {productos_con_precio_valido}")
+    print(f"⚠️  Productos sin precio válido: {productos_sin_precio_valido}")
+    
+    if productos_con_precio_valido > 0:
+        print(f"📈 Precio promedio: {df['precio'].mean():.2f}€")
+        print(f"📊 Precio mediano: {df['precio'].median():.2f}€")
+        print(f"📉 Precio mínimo: {df['precio'].min():.2f}€")
+        print(f"📈 Precio máximo: {df['precio'].max():.2f}€")
     
     print("\n📋 Primeras 5 filas del DataFrame:")
     print(df.head())
@@ -654,6 +736,7 @@ def main():
         print(f"✅ Scraping completado exitosamente")
         print(f"📦 Productos obtenidos hoy: {len(df)}")
         print(f"🏷️  Marcas diferentes encontradas: {df['marca'].nunique()}")
+        print(f"💰 Precios válidos obtenidos: {df['precio'].notna().sum()}")
         print(f"📁 Archivo local generado: {archivo_csv}")
         print(f"💾 Google Drive: Datos añadidos al archivo histórico")
         
