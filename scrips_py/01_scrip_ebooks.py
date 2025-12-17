@@ -316,9 +316,13 @@ def subir_archivo_drive(service, nombre_archivo, contenido, folder_id, file_id=N
 #    Otra vez, ahora el chatgpt                #
 # ============================================ #
 
-def actualizar_csv_drive(df_nuevo, folder_id, nombre_archivo):
+def actualizar_csv_drive(
+    df_nuevo,
+    folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7",
+    nombre_archivo="ebooks_mediamarkt.csv"
+):
     print("\n" + "="*60)
-    print("ACTUALIZANDO GOOGLE DRIVE – HISTÓRICO REAL")
+    print("ACTUALIZANDO GOOGLE DRIVE – HISTÓRICO REAL (APPEND)")
     print("="*60)
 
     service = configurar_google_drive()
@@ -339,7 +343,7 @@ def actualizar_csv_drive(df_nuevo, folder_id, nombre_archivo):
         df_existente = pd.read_csv(io.StringIO(contenido))
         print(f"📊 Filas históricas: {len(df_existente)}")
 
-        # 🔒 CONCAT SEGURO
+        # CONCAT SEGURO (NO REORDENA, NO BORRA)
         df_combinado = pd.concat(
             [df_existente, df_nuevo],
             ignore_index=True,
@@ -350,25 +354,25 @@ def actualizar_csv_drive(df_nuevo, folder_id, nombre_archivo):
         print("🆕 No existe histórico, creando nuevo")
         df_combinado = df_nuevo.copy()
 
-    # ❗ DUPLICADOS SOLO SI SON EXACTAMENTE IGUALES
-    antes = len(df_combinado)
+    # Eliminar SOLO duplicados exactos
+    filas_antes = len(df_combinado)
     df_combinado = df_combinado.drop_duplicates()
-    despues = len(df_combinado)
+    filas_despues = len(df_combinado)
 
-    print(f"🧹 Duplicados exactos eliminados: {antes - despues}")
-    print(f"📊 Total final: {len(df_combinado)}")
+    print(f"🧹 Duplicados exactos eliminados: {filas_antes - filas_despues}")
+    print(f"📊 Total final en histórico: {len(df_combinado)}")
 
-    csv = df_combinado.to_csv(index=False, encoding="utf-8")
+    csv_contenido = df_combinado.to_csv(index=False, encoding="utf-8")
 
     subir_archivo_drive(
         service,
         nombre_archivo,
-        csv,
+        csv_contenido,
         folder_id,
         archivo_existente["id"] if archivo_existente else None
     )
 
-    print("✅ Histórico actualizado correctamente")
+    print("✅ Histórico actualizado correctamente en Google Drive")
     return True
 
 # ============================================ #
