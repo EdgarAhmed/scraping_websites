@@ -310,7 +310,8 @@ def subir_archivo_drive(service, nombre_archivo, contenido, folder_id, file_id=N
 #    he cambiado fecha en drive de forma       #
 #        automática                            #
 #    y utilizo esta para ver si funciona       #
-#                                              #
+# ============================================ #
+#              Se vuelve a cambiar             #
 # ============================================ #
 
 def actualizar_csv_drive(df_nuevo, folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7", nombre_archivo="ebooks_mediamarkt.csv"):
@@ -365,14 +366,28 @@ def actualizar_csv_drive(df_nuevo, folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7"
                 print(f"\n📋 Columnas en archivo existente: {list(df_existente.columns)}")
                 print(f"📋 Columnas en datos nuevos: {list(df_nuevo.columns)}")
                 
-                # ESTRATEGIA: Crear columnas faltantes en el DataFrame existente
+                # Añadir columnas faltantes al DataFrame existente
+                columnas_faltantes = []
                 for columna in df_nuevo.columns:
                     if columna not in df_existente.columns:
+                        columnas_faltantes.append(columna)
                         print(f"➕ Añadiendo columna faltante al historial: {columna}")
                         df_existente[columna] = None
                 
+                if columnas_faltantes:
+                    print(f"📝 Se añadieron {len(columnas_faltantes)} columnas al historial")
+                
                 # Asegurar que las columnas están en el mismo orden
+                # IMPORTANTE: Usar las columnas del NUEVO DataFrame como referencia
                 column_order = list(df_nuevo.columns)
+                
+                # Verificar que todas las columnas existan en ambos DataFrames
+                for col in column_order:
+                    if col not in df_existente.columns:
+                        print(f"⚠️  Advertencia: Columna {col} no encontrada en df_existente, añadiendo...")
+                        df_existente[col] = None
+                
+                # Reordenar columnas del DataFrame existente
                 df_existente = df_existente[column_order]
                 
                 # VERIFICAR DATOS NUEVOS
@@ -383,6 +398,11 @@ def actualizar_csv_drive(df_nuevo, folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7"
                 
                 # COMBINAR sin eliminar duplicados entre días diferentes
                 print("\n🔄 Combinando historial con datos nuevos...")
+                
+                # Asegurar que df_nuevo tiene el mismo orden de columnas
+                df_nuevo = df_nuevo[column_order]
+                
+                # CONCATENAR los DataFrames
                 df_combinado = pd.concat([df_existente, df_nuevo], ignore_index=True)
                 
                 # VERIFICAR CÓMO SE COMBINAN
@@ -390,17 +410,25 @@ def actualizar_csv_drive(df_nuevo, folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7"
                 aumento = registros_despues_combinar - len(df_existente)
                 print(f"  📈 Registros después de combinar: {registros_despues_combinar}")
                 print(f"  ➕ Aumento (datos nuevos): {aumento}")
+                print(f"  📊 Registros históricos mantenidos: {len(df_existente)}")
                 
-                # ELIMINAR SOLO duplicados EXACTOS (mismo registro exacto)
+                # ELIMINAR SOLO duplicados EXACTOS (misma ejecución)
                 duplicados_exactos = df_combinado.duplicated(keep='first').sum()
-                df_combinado = df_combinado.drop_duplicates(keep='first')
                 
-                print(f"  🗑️  Duplicados exactos eliminados: {duplicados_exactos}")
-                print(f"  📊 Registros finales: {len(df_combinado)}")
+                if duplicados_exactos > 0:
+                    print(f"  🗑️  Duplicados exactos eliminados: {duplicados_exactos}")
+                    df_combinado = df_combinado.drop_duplicates(keep='first')
+                    print(f"  📊 Registros finales después de eliminar duplicados: {len(df_combinado)}")
                 
                 # Registros de hoy en el dataset combinado
-                registros_hoy_final = df_combinado[df_combinado['fecha_extraccion'].str.contains(fecha_hoy)].shape[0]
-                print(f"  📅 Registros de hoy en historial final: {registros_hoy_final}")
+                if 'fecha_extraccion' in df_combinado.columns:
+                    registros_hoy_final = df_combinado[df_combinado['fecha_extraccion'].str.contains(fecha_hoy)].shape[0]
+                    print(f"  📅 Registros de hoy en historial final: {registros_hoy_final}")
+                    
+                    # También contar registros de ayer
+                    fecha_ayer = (datetime.now() - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+                    registros_ayer_final = df_combinado[df_combinado['fecha_extraccion'].str.contains(fecha_ayer)].shape[0]
+                    print(f"  📅 Registros de ayer en historial final: {registros_ayer_final}")
                 
             else:
                 print("⚠️  No se pudo descargar el archivo existente")
