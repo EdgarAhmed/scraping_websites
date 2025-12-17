@@ -304,11 +304,8 @@ def subir_archivo_drive(service, nombre_archivo, contenido, folder_id, file_id=N
 #      ACTULIZAR EL ID DE LA CARPETA Y EL      #
 #         NOMBRE DEL CSV                       #
 # ============================================ #
-def actualizar_csv_drive(df_nuevo, folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7", nombre_archivo="ebooks_mediamarkt.csv"): #el id de la carpeta y el nombre del archivo en Drive
-    """
-    Actualiza un archivo CSV en Google Drive combinando datos existentes con nuevos
-    NO elimina duplicados entre días diferentes - conserva historial diario
-    """
+ """def actualizar_csv_drive(df_nuevo, folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7", nombre_archivo="ebooks_mediamarkt.csv"): #el id de la carpeta y el nombre del archivo en Drive
+
     print("\n" + "="*60)
     print("ACTUALIZANDO GOOGLE DRIVE")
     print("="*60)
@@ -406,8 +403,154 @@ def actualizar_csv_drive(df_nuevo, folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7"
         print(f"❌ Error en el proceso de Google Drive: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        return False"""
+# ============================================ #
+#                                              #
+#   funcion para ver si no me sobreescribe.    #
+#    he cambiado fecha en drive de forma       #
+#        automática                            #
+#    y utilizo esta para ver si funciona       #
+#                                              #
+# ============================================ #
 
+def actualizar_csv_drive(df_nuevo, folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7", nombre_archivo="ebooks_mediamarkt.csv"):
+    """
+    Actualiza un archivo CSV en Google Drive combinando datos existentes con nuevos
+    NO elimina duplicados entre días diferentes - conserva historial diario
+    """
+    print("\n" + "="*60)
+    print("ACTUALIZANDO GOOGLE DRIVE - MODO HISTORIAL")
+    print("="*60)
+    print("📌 MODO: APPEND - Los datos se añaden, NO se sobrescriben")
+    print("📌 Se mantiene historial completo día a día")
+    print("="*60)
+    
+    # Configurar Google Drive
+    service = configurar_google_drive()
+    if not service:
+        print("⚠️  Omitiendo actualización en Google Drive")
+        return False
+    
+    try:
+        # Buscar archivo existente
+        archivo_existente = buscar_archivo_drive(service, nombre_archivo, folder_id)
+        
+        if archivo_existente:
+            print(f"📁 Archivo histórico encontrado en Drive")
+            print(f"📄 Nombre: {archivo_existente['name']}")
+            print(f"📅 Última modificación: {archivo_existente.get('modifiedTime', 'Desconocida')}")
+            
+            # Descargar archivo existente
+            contenido_existente = descargar_archivo_drive(service, archivo_existente['id'])
+            
+            if contenido_existente:
+                # Leer CSV existente
+                df_existente = pd.read_csv(io.StringIO(contenido_existente))
+                print(f"📊 Registros históricos en Drive: {len(df_existente)}")
+                
+                # MOSTRAR HISTORIAL EXISTENTE
+                if 'fecha_extraccion' in df_existente.columns:
+                    # Extraer solo fecha (sin hora) para análisis
+                    df_existente['fecha'] = df_existente['fecha_extraccion'].str[:10]
+                    dias_historial = df_existente['fecha'].nunique()
+                    print(f"📅 Días en historial actual: {dias_historial}")
+                    
+                    if dias_historial > 0:
+                        print("\n📊 Distribución actual por día:")
+                        distribucion_actual = df_existente['fecha'].value_counts().sort_index()
+                        for fecha, cantidad in distribucion_actual.items():
+                            print(f"  {fecha}: {cantidad} registros")
+                
+                # VERIFICAR COLUMNAS
+                print(f"\n📋 Columnas en archivo existente: {list(df_existente.columns)}")
+                print(f"📋 Columnas en datos nuevos: {list(df_nuevo.columns)}")
+                
+                # ESTRATEGIA: Crear columnas faltantes en el DataFrame existente
+                for columna in df_nuevo.columns:
+                    if columna not in df_existente.columns:
+                        print(f"➕ Añadiendo columna faltante al historial: {columna}")
+                        df_existente[columna] = None
+                
+                # Asegurar que las columnas están en el mismo orden
+                column_order = list(df_nuevo.columns)
+                df_existente = df_existente[column_order]
+                
+                # VERIFICAR DATOS NUEVOS
+                fecha_hoy = datetime.now().strftime("%Y-%m-%d")
+                registros_hoy_nuevos = len(df_nuevo)
+                print(f"\n🎯 Datos nuevos para hoy ({fecha_hoy}):")
+                print(f"  📦 Registros a añadir: {registros_hoy_nuevos}")
+                
+                # COMBINAR sin eliminar duplicados entre días diferentes
+                print("\n🔄 Combinando historial con datos nuevos...")
+                df_combinado = pd.concat([df_existente, df_nuevo], ignore_index=True)
+                
+                # VERIFICAR CÓMO SE COMBINAN
+                registros_despues_combinar = len(df_combinado)
+                aumento = registros_despues_combinar - len(df_existente)
+                print(f"  📈 Registros después de combinar: {registros_despues_combinar}")
+                print(f"  ➕ Aumento (datos nuevos): {aumento}")
+                
+                # ELIMINAR SOLO duplicados EXACTOS (mismo registro exacto)
+                duplicados_exactos = df_combinado.duplicated(keep='first').sum()
+                df_combinado = df_combinado.drop_duplicates(keep='first')
+                
+                print(f"  🗑️  Duplicados exactos eliminados: {duplicados_exactos}")
+                print(f"  📊 Registros finales: {len(df_combinado)}")
+                
+                # Registros de hoy en el dataset combinado
+                registros_hoy_final = df_combinado[df_combinado['fecha_extraccion'].str.contains(fecha_hoy)].shape[0]
+                print(f"  📅 Registros de hoy en historial final: {registros_hoy_final}")
+                
+            else:
+                print("⚠️  No se pudo descargar el archivo existente")
+                print("📝 Se creará un nuevo archivo histórico")
+                df_combinado = df_nuevo
+        else:
+            print("📝 No se encontró archivo histórico existente")
+            print("📝 Se creará un nuevo archivo histórico")
+            df_combinado = df_nuevo
+        
+        # Convertir DataFrame combinado a CSV
+        csv_contenido = df_combinado.to_csv(index=False, encoding='utf-8')
+        
+        # Subir/actualizar archivo en Drive
+        file_id = archivo_existente['id'] if archivo_existente else None
+        archivo = subir_archivo_drive(service, nombre_archivo, csv_contenido, folder_id, file_id)
+        
+        if archivo:
+            print("\n✅ Google Drive actualizado exitosamente")
+            print(f"📊 Total de registros en archivo histórico: {len(df_combinado)}")
+            
+            if 'fecha_extraccion' in df_combinado.columns:
+                # Crear columna de fecha sin hora
+                df_combinado['fecha'] = df_combinado['fecha_extraccion'].str[:10]
+                fechas_unicas = df_combinado['fecha'].nunique()
+                print(f"📅 Días diferentes en el historial: {fechas_unicas}")
+                
+                if fechas_unicas > 0:
+                    print("\n📊 Distribución por fecha (historial completo):")
+                    distribucion = df_combinado['fecha'].value_counts().sort_index()
+                    for fecha, cantidad in distribucion.items():
+                        hoy_marca = " ← HOY" if fecha == datetime.now().strftime("%Y-%m-%d") else ""
+                        print(f"  {fecha}: {cantidad} registros{hoy_marca}")
+                    
+                    # Resumen de evolución
+                    print(f"\n📈 Evolución del historial:")
+                    print(f"  Primer día: {df_combinado['fecha'].min()}")
+                    print(f"  Último día: {df_combinado['fecha'].max()}")
+                    print(f"  Total días: {fechas_unicas}")
+            
+            return True
+        else:
+            print("❌ Error actualizando Google Drive")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Error en el proceso de Google Drive: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 # ============================================ #
 #                                              #
 #      FUNCIONES DEL SCRAPING                  #
