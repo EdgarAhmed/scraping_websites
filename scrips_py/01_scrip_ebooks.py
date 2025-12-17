@@ -21,9 +21,11 @@ import sys
 import io
 import json
 
-# ============================================
-# CONFIGURACIÓN DE MARCAS DE EBOOKS
-# ============================================
+# ============================================ #
+#                                              #
+#       CONFIGURACIÓN DE MARCAS DE EBOOKS      #
+#                                              #
+# ============================================ #
 
 marcas_ebooks = [
     'amazon', 'kindle', 'kobo', 'pocketbook', 'bq', 'tolino', 'onyx boox',
@@ -105,9 +107,11 @@ def extraer_marca_ebook(nombre):
 
     return 'Otra marca'
 
-# ============================================
-# FUNCIÓN PARA LIMPIAR PRECIOS
-# ============================================
+# ============================================ #
+#                                              #
+#          LIMPIA PRECIOS                      #
+#                                              #
+# ============================================ #
 
 def limpiar_columna_precio(df):
     """
@@ -175,9 +179,11 @@ def limpiar_columna_precio(df):
         traceback.print_exc()
         return df
 
-# ============================================
-# CONFIGURACIÓN DE GOOGLE DRIVE
-# ============================================
+# ============================================ #
+#                                              #
+#       CONFIGURACIÓN GOOGLE DRIVE     #
+#                                              #
+# ============================================ #
 
 def configurar_google_drive():
     """
@@ -293,8 +299,12 @@ def subir_archivo_drive(service, nombre_archivo, contenido, folder_id, file_id=N
     except Exception as e:
         print(f"❌ Error subiendo archivo a Drive: {e}")
         return None
-
-def actualizar_csv_drive(df_nuevo, folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7", nombre_archivo="ebooks_mediamarkt.csv"):
+# ============================================ #
+#                                              #
+#      ACTULIZAR EL ID DE LA CARPETA Y EL      #
+#         NOMBRE DEL CSV                       #
+# ============================================ #
+def actualizar_csv_drive(df_nuevo, folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7", nombre_archivo="ebooks_mediamarkt.csv"): #el id de la carpeta y el nombre del archivo en Drive
     """
     Actualiza un archivo CSV en Google Drive combinando datos existentes con nuevos
     NO elimina duplicados entre días diferentes - conserva historial diario
@@ -398,9 +408,11 @@ def actualizar_csv_drive(df_nuevo, folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7"
         traceback.print_exc()
         return False
 
-# ============================================
-# FUNCIONES DE SCRAPING (EXACTLY like old notebook)
-# ============================================
+# ============================================ #
+#                                              #
+#      FUNCIONES DEL SCRAPING                  #
+#                                              #
+# ============================================ #
 
 def setup_chrome_options():
     """Configura Chrome para ejecución headless (optimizado)"""
@@ -443,6 +455,11 @@ def mediamark_mob_(url):
     except Exception as e:
         print(f"❌ Error inicializando Chrome: {e}")
         raise
+# ============================================ #
+#                                              #
+#       OBTENER PRECIO PRODUCTOS               #
+#                                              #
+# ============================================ #
 
 def obtener_total_articulos(driver):
     """
@@ -550,6 +567,12 @@ def extraer_productos_pagina(driver):
         print(f"❌ Error extrayendo productos de la página: {e}")
         return productos_pagina
 
+# ============================================ #
+#                                              #
+#       AQUI SE CAMBIA URL TMB                 #
+#                                              #
+# ============================================ #
+
 def extraer_productos(driver):
     """
     Extrae todos los productos EXACTLY like old notebook
@@ -580,7 +603,7 @@ def extraer_productos(driver):
                 try:
                     print(f"📖 Página {pagina}/30 - Criterio: {criterio}")
                     
-                    url_pagina = f"https://www.mediamarkt.es/es/category/ebooks-249.html?sort={criterio}&page={pagina}"
+                    url_pagina = f"https://www.mediamarkt.es/es/category/ebooks-249.html?sort={criterio}&page={pagina}" #URL a cambiar
                     
                     driver.get(url_pagina)
                     time.sleep(2)
@@ -686,10 +709,11 @@ def guardar_en_dataframe(productos_data):
     
     return df, file_path
 
-# ============================================
-# FUNCIÓN PRINCIPAL
-# ============================================
-
+# ============================================ #
+#                                              #
+#      FUNCION PRINCIPAL                       #
+#        CAMBIAR URL                           #
+# ============================================ #
 def main():
     """Función principal"""
     print("="*60)
@@ -701,7 +725,7 @@ def main():
     driver = None
     
     try:
-        url = "https://www.mediamarkt.es/es/category/ebooks-249.html?sort=currentprice+desc"
+        url = "https://www.mediamarkt.es/es/category/ebooks-249.html?sort=currentprice+desc" #URL a cambiar
         
         print(f"\n🌐 Accediendo a: {url}")
         
