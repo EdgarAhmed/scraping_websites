@@ -22,6 +22,90 @@ import io
 import json
 
 # ============================================
+# CONFIGURACIÓN DE MARCAS DE EBOOKS
+# ============================================
+
+marcas_ebooks = [
+    'amazon', 'kindle', 'kobo', 'pocketbook', 'bq', 'tolino', 'onyx boox',
+    'remarkable', 'sony', 'reader', 'nook', 'barnes noble', 'bookeen',
+    'energy sistem', 'wolder', 'dingoo', 'artect', 'trekstor', 'iriver',
+    'aluratek', 'emporia', 'hanvon', 'pandigital', 'velocity micro',
+    'copia', 'foxit', 'ectaco', 'entourage', 'icarus', 'geniatech',
+    'pocketbook', 'inkbook', 'fidibook', 'mediapress', 'vivitar',
+    'supersonic', 'visual land', 'digma', 'texet', 'prestigio', 'ritmix',
+    'odeon', 'maxvi', 'teclast', 'chuwi', 'cube', 'onda', 'aigo', 'newsmy',
+    'wexler', 'ebw', 'bens', 'mustek', 'philips', 'lenovo', 'asus',
+    'dell', 'hp', 'acer', 'samsung', 'lg', 'microsoft', 'apple'
+]
+
+def extraer_marca_ebook(nombre):
+    """
+    Función para extraer la marca del ebook del nombre
+    """
+    if pd.isna(nombre):
+        return 'Desconocido'
+
+    nombre_lower = str(nombre).lower()
+
+    # Casos especiales que necesitan manejo específico
+    if 'kindle' in nombre_lower:
+        return 'Amazon'
+    if 'kobo' in nombre_lower:
+        return 'Kobo'
+    if 'pocketbook' in nombre_lower:
+        return 'PocketBook'
+    if 'tolino' in nombre_lower:
+        return 'Tolino'
+    if 'onyx boox' in nombre_lower:
+        return 'Onyx Boox'
+    if 'remarkable' in nombre_lower:
+        return 'ReMarkable'
+    if 'nook' in nombre_lower or 'barnes noble' in nombre_lower:
+        return 'Barnes & Noble'
+    if 'bookeen' in nombre_lower:
+        return 'Bookeen'
+    if 'energy sistem' in nombre_lower:
+        return 'Energy Sistem'
+    if 'inkbook' in nombre_lower:
+        return 'Inkbook'
+    if 'fidibook' in nombre_lower:
+        return 'Fidibook'
+
+    # Buscar coincidencias exactas de marcas
+    for marca in marcas_ebooks:
+        # Buscar la marca como palabra completa para evitar falsos positivos
+        if f' {marca} ' in f' {nombre_lower} ' or nombre_lower.startswith(marca + ' '):
+            # Manejar nombres que deben ser capitalizados correctamente
+            if marca in ['bq', 'kobo']:
+                return marca.upper()
+            elif marca == 'kindle':
+                return 'Amazon'
+            elif marca == 'pocketbook':
+                return 'PocketBook'
+            elif marca == 'tolino':
+                return 'Tolino'
+            elif marca == 'onyx boox':
+                return 'Onyx Boox'
+            elif marca == 'remarkable':
+                return 'ReMarkable'
+            elif marca in ['nook', 'barnes noble']:
+                return 'Barnes & Noble'
+            elif marca == 'bookeen':
+                return 'Bookeen'
+            elif marca == 'energy sistem':
+                return 'Energy Sistem'
+            elif marca == 'inkbook':
+                return 'Inkbook'
+            elif marca == 'fidibook':
+                return 'Fidibook'
+            elif marca == 'bq':
+                return 'BQ'
+            else:
+                return marca.title()  # Devuelve con la primera letra mayúscula
+
+    return 'Otra marca'
+
+# ============================================
 # CONFIGURACIÓN DE GOOGLE DRIVE
 # ============================================
 
@@ -253,7 +337,7 @@ def setup_chrome_options():
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")  # ← FIXED: removed extra "
+    chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
@@ -377,9 +461,13 @@ def extraer_productos_pagina(driver):
                 nombre = titulo.text
                 precio = extraer_precio_producto(contenedor)
                 
+                # Extraer marca del ebook
+                marca = extraer_marca_ebook(nombre)
+                
                 productos_pagina.append({
                     'nombre': nombre,
-                    'precio': precio
+                    'precio': precio,
+                    'marca': marca
                 })
                 
             except Exception as e:
@@ -483,7 +571,8 @@ def guardar_en_dataframe(productos_data):
     fecha_extraccion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     df['fecha_extraccion'] = fecha_extraccion
     
-    column_order = ['fecha_extraccion', 'numero', 'nombre', 'precio']
+    # Orden de columnas con la nueva columna 'marca'
+    column_order = ['fecha_extraccion', 'numero', 'nombre', 'marca', 'precio']
     df = df[column_order]
     
     os.makedirs("scraping_results", exist_ok=True)
@@ -495,10 +584,19 @@ def guardar_en_dataframe(productos_data):
     print(f"\n✅ Datos guardados en: {file_path}")
     print(f"📊 Total de productos únicos: {len(df)}")
     
+    # Estadísticas de marcas
+    print(f"🏷️  Distribución de marcas:")
+    distribucion_marcas = df['marca'].value_counts()
+    for marca, cantidad in distribucion_marcas.head(10).items():
+        print(f"   {marca}: {cantidad} productos")
+    
+    if len(distribucion_marcas) > 10:
+        print(f"   ... y {len(distribucion_marcas) - 10} marcas más")
+    
     productos_con_precio = len(df[df['precio'].str.contains('€', na=False)])
     productos_sin_precio = len(df) - productos_con_precio
     
-    print(f"💰 Productos con precio: {productos_con_precio}")
+    print(f"\n💰 Productos con precio: {productos_con_precio}")
     print(f"❌ Productos sin precio: {productos_sin_precio}")
     
     print("\n📋 Primeras 5 filas del DataFrame:")
@@ -555,6 +653,7 @@ def main():
         print("="*60)
         print(f"✅ Scraping completado exitosamente")
         print(f"📦 Productos obtenidos hoy: {len(df)}")
+        print(f"🏷️  Marcas diferentes encontradas: {df['marca'].nunique()}")
         print(f"📁 Archivo local generado: {archivo_csv}")
         print(f"💾 Google Drive: Datos añadidos al archivo histórico")
         
