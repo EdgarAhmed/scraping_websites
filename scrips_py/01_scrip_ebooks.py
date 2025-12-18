@@ -239,12 +239,6 @@ def buscar_archivo_drive(service, nombre_archivo, folder_id):
     except Exception as e:
         print(f"❌ Error buscando archivo en Drive: {e}")
         return None
-# ============================================ #
-# esta función también da error. es la que     #
-# actualizo en este ultimo commit.             #
-# ============================================ #
-# se vuelve a cambiar esta línea               #
-# ============================================ #
 
 def descargar_archivo_drive(service, file_id):
     """
@@ -291,22 +285,54 @@ def descargar_archivo_drive(service, file_id):
         print(f"❌ Error descargando archivo de Drive: {e}")
         return None
 
-# ============================================ #
-#                                              #
-#      ACTULIZAR EL ID DE LA CARPETA Y EL      #
-#         NOMBRE DEL CSV                       #
-# ============================================ #
-# ============================================ #
-#                                              #
-#   funcion para ver si no me sobreescribe.    #
-#    he cambiado fecha en drive de forma       #
-#        automática                            #
-#    y utilizo esta para ver si funciona       #
-# ============================================ #
-#              Se vuelve a cambiar             #
-# ============================================ #
-#    Otra vez, ahora el chatgpt                #
-# ============================================ #
+def subir_archivo_drive(service, nombre_archivo, contenido_csv, folder_id, file_id=None):
+    """
+    Sube un archivo CSV a Google Drive.
+    Si file_id se proporciona, actualiza el archivo existente.
+    Si no, crea un nuevo archivo.
+    """
+    try:
+        from googleapiclient.http import MediaIoBaseUpload
+        import io
+        
+        # Crear un objeto de bytes del CSV
+        csv_bytes = contenido_csv.encode('utf-8')
+        media = MediaIoBaseUpload(
+            io.BytesIO(csv_bytes), 
+            mimetype='text/csv',
+            resumable=False
+        )
+        
+        # Si hay un file_id, actualizar el archivo existente
+        if file_id:
+            print(f"📤 Actualizando archivo existente en Drive (ID: {file_id})")
+            file = service.files().update(
+                fileId=file_id,
+                media_body=media
+            ).execute()
+            print("✅ Archivo actualizado en Drive")
+        # Si no, crear un nuevo archivo
+        else:
+            print("📤 Creando nuevo archivo en Drive")
+            file_metadata = {
+                'name': nombre_archivo,
+                'parents': [folder_id],
+                'mimeType': 'text/csv'
+            }
+            file = service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id'
+            ).execute()
+            print(f"✅ Nuevo archivo creado en Drive (ID: {file.get('id')})")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error subiendo archivo a Drive: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 def actualizar_csv_drive(
     df_nuevo,
@@ -414,6 +440,7 @@ def mediamark_mob_(url):
     except Exception as e:
         print(f"❌ Error inicializando Chrome: {e}")
         raise
+
 # ============================================ #
 #                                              #
 #       OBTENER PRECIO PRODUCTOS               #
@@ -526,12 +553,6 @@ def extraer_productos_pagina(driver):
         print(f"❌ Error extrayendo productos de la página: {e}")
         return productos_pagina
 
-# ============================================ #
-#                                              #
-#       AQUI SE CAMBIA URL TMB                 #
-#                                              #
-# ============================================ #
-
 def extraer_productos(driver):
     """
     Extrae todos los productos EXACTLY like old notebook
@@ -562,7 +583,7 @@ def extraer_productos(driver):
                 try:
                     print(f"📖 Página {pagina}/30 - Criterio: {criterio}")
                     
-                    url_pagina = f"https://www.mediamarkt.es/es/category/ebooks-249.html?sort={criterio}&page={pagina}" #URL a cambiar
+                    url_pagina = f"https://www.mediamarkt.es/es/category/ebooks-249.html?sort={criterio}&page={pagina}"
                     
                     driver.get(url_pagina)
                     time.sleep(2)
@@ -671,8 +692,9 @@ def guardar_en_dataframe(productos_data):
 # ============================================ #
 #                                              #
 #      FUNCION PRINCIPAL                       #
-#        CAMBIAR URL                           #
+#                                              #
 # ============================================ #
+
 def main():
     """Función principal"""
     print("="*60)
@@ -684,7 +706,7 @@ def main():
     driver = None
     
     try:
-        url = "https://www.mediamarkt.es/es/category/ebooks-249.html?sort=currentprice+desc" #URL a cambiar
+        url = "https://www.mediamarkt.es/es/category/ebooks-249.html?sort=currentprice+desc"
         
         print(f"\n🌐 Accediendo a: {url}")
         
