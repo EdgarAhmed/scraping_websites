@@ -39,7 +39,7 @@ marcas_monitores = [
     'ultrawide', 'curved', 'ips', 'oled', 'qled', 'tn', 'va', 'pls'
 ]
 
-def extraer_marca_monitor(nombre):
+def extraer_marca (nombre):
     if pd.isna(nombre):
         return 'Desconocido'
     
