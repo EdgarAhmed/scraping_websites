@@ -41,53 +41,6 @@ marcas_ebooks = [
     'dell', 'hp', 'acer', 'samsung', 'lg', 'microsoft', 'apple'
 ]
 
-# ============================================ #
-#                                              #
-#    FUNCIONES PARA GENERAR IDs ÚNICOS         #
-#                                              #
-# ============================================ #
-
-def generar_id_consistente(nombre):
-    """
-    Genera un ID único y consistente basado en el nombre del producto
-    El mismo producto siempre tendrá el mismo ID
-    """
-    # Normalizar el nombre: minúsculas, sin espacios extra, caracteres especiales
-    nombre_normalizado = str(nombre).lower().strip()
-    nombre_normalizado = re.sub(r'\s+', ' ', nombre_normalizado)  # Reemplazar múltiples espacios por uno
-    
-    # Crear un hash MD5 del nombre normalizado
-    hash_obj = hashlib.md5(nombre_normalizado.encode('utf-8'))
-    hash_hex = hash_obj.hexdigest()
-    
-    # Tomar los primeros 12 caracteres del hash para un ID legible
-    return hash_hex[:12]
-
-def generar_id_descriptivo(nombre, marca=""):
-    """
-    Genera un ID más descriptivo combinando marca y hash
-    """
-    # Normalizar inputs
-    nombre_norm = str(nombre).lower().strip()
-    marca_norm = str(marca).lower().strip() if marca else ""
-    
-    # Crear una clave combinada
-    if marca_norm:
-        clave = f"{marca_norm}:{nombre_norm}"
-    else:
-        clave = nombre_norm
-    
-    # Generar hash
-    hash_obj = hashlib.md5(clave.encode('utf-8'))
-    hash_hex = hash_obj.hexdigest()[:8]  # Más corto
-    
-    # Si tenemos marca, crear ID del tipo "MARCA_HASH"
-    if marca_norm:
-        marca_abrev = marca_norm[:4].upper()
-        return f"{marca_abrev}_{hash_hex}"
-    else:
-        return hash_hex
-
 def extraer_marca_ebook(nombre):
     """
     Función para extraer la marca del ebook del nombre
@@ -154,6 +107,59 @@ def extraer_marca_ebook(nombre):
                 return marca.title()  # Devuelve con la primera letra mayúscula
 
     return 'Otra marca'
+    
+# ============================================ #
+#                                              #
+#    FUNCIONES PARA GENERAR IDs ÚNICOS         #
+#                                              #
+# ============================================ #
+
+def generar_id_consistente(nombre):
+    """
+    Genera un ID único y consistente basado en el nombre del producto
+    El mismo producto siempre tendrá el mismo ID
+    """
+    # Normalizar el nombre: minúsculas, sin espacios extra, caracteres especiales
+    nombre_normalizado = str(nombre).lower().strip()
+    nombre_normalizado = re.sub(r'\s+', ' ', nombre_normalizado)  # Reemplazar múltiples espacios por uno
+    
+    # Crear un hash MD5 del nombre normalizado
+    hash_obj = hashlib.md5(nombre_normalizado.encode('utf-8'))
+    hash_hex = hash_obj.hexdigest()
+    
+    # Tomar los primeros 12 caracteres del hash para un ID legible
+    return hash_hex[:12]
+
+# ============================================ #
+#                                              #
+#    aqui tmb se crean los IDS                 #
+#                                              #
+# ============================================ #
+
+def generar_id_descriptivo(nombre, marca=""):
+    """
+    Genera un ID más descriptivo combinando marca y hash
+    """
+    # Normalizar inputs
+    nombre_norm = str(nombre).lower().strip()
+    marca_norm = str(marca).lower().strip() if marca else ""
+    
+    # Crear una clave combinada
+    if marca_norm:
+        clave = f"{marca_norm}:{nombre_norm}"
+    else:
+        clave = nombre_norm
+    
+    # Generar hash
+    hash_obj = hashlib.md5(clave.encode('utf-8'))
+    hash_hex = hash_obj.hexdigest()[:8]  # Más corto
+    
+    # Si tenemos marca, crear ID del tipo "MARCA_HASH"
+    if marca_norm:
+        marca_abrev = marca_norm[:4].upper()
+        return f"{marca_abrev}_{hash_hex}"
+    else:
+        return hash_hex
 
 # ============================================ #
 #                                              #
@@ -698,6 +704,13 @@ def extraer_productos(driver):
     except Exception as e:
         print(f"❌ Error extrayendo productos: {e}")
         return productos_data
+
+# ============================================ #
+#                                              #
+#      no solo guarda, si no que, es para      #
+#                 crear los IDS                #
+#                                              #
+# ============================================ #
 
 def guardar_en_dataframe(productos_data):
     """
