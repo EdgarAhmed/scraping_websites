@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script de scraping para smartphones de MediaMarkt con actualización en Google Drive
+Script de scraping para Moviles de MediaMarkt con actualización en Google Drive
 EXACTLY matches the old notebook scraping logic
 """
 
@@ -20,11 +20,119 @@ import re
 import sys
 import io
 import json
-import hashlib
 
-# ============================================
-# CONFIGURACIÓN DE GOOGLE DRIVE
-# ============================================
+# ============================================ #
+#                                              #
+#       CONFIGURACIÓN DE MARCAS DE MOVILES     #
+#                                              #
+# ============================================ #
+
+marcas_moviles = [
+    'samsung', 'apple', 'xiaomi', 'huawei', 'oppo', 'vivo', 'realme', 
+    'oneplus', 'motorola', 'google', 'sony', 'nokia', 'lg', 'htc', 
+    'lenovo', 'zte', 'alcatel', 'honor', 'asus', 'tcl', 'micromax', 
+    'infinix', 'tecno', 'meizu', 'black shark', 'sharp', 'panasonic', 
+    'cat', 'fairphone', 'nothing', 'poco', 'pixel', 'xperia', 'lumia', 'moto', 'nubia', 'klack', 'dam electronics', 'BEAFON', 'EMPORIA',
+    'OSCAL', 'ENERGIZER'
+]
+
+def extraer_marca(nombre):
+    if pd.isna(nombre):
+        return 'Desconocido'
+    
+    nombre_lower = str(nombre).lower()
+    
+    for marca in marcas_moviles:
+        if marca in nombre_lower:
+            return marca.title() 
+    
+    return 'Otra marca'
+
+# ============================================ #
+#                                              #
+#          LIMPIA PRECIOS                      #
+#                                              #
+# ============================================ #
+
+def limpiar_columna_precio(df):
+    """
+    Limpia la columna precio para extraer valores numéricos
+    """
+    print("\n" + "="*60)
+    print("LIMPIANDO COLUMNA PRECIO")
+    print("="*60)
+    
+    try:
+        # Guardar copia del precio original antes de limpiar
+        if 'precio_original' not in df.columns:
+            df['precio_original'] = df['precio'].copy()
+        
+        # Estadísticas antes de limpiar
+        print(f"📊 Total de registros: {len(df)}")
+        print(f"💰 Valores únicos antes de limpiar: {df['precio'].nunique()}")
+        print(f"❌ Valores nulos antes de limpiar: {df['precio'].isna().sum()}")
+        
+        # Limpiar la columna precio
+        df['precio'] = (
+            df['precio']
+            .astype(str)
+            .str.replace(r'[^\d,]', '', regex=True)  # Eliminar todo excepto números y comas
+            .str.replace(',', '.', regex=False)  # Convertir comas a puntos
+        )
+        
+        # Convertir a float
+        df['precio'] = pd.to_numeric(
+            df['precio'], 
+            errors='coerce'
+        )
+        
+        # Estadísticas después de limpiar
+        print(f"✅ Columna precio limpiada exitosamente")
+        print(f"💰 Valores únicos después de limpiar: {df['precio'].nunique()}")
+        print(f"❌ Valores nulos después de limpiar: {df['precio'].isna().sum()}")
+        print(f"📈 Rango de precios: {df['precio'].min():.2f}€ - {df['precio'].max():.2f}€")
+        print(f"📊 Precio promedio: {df['precio'].mean():.2f}€")
+        print(f"📋 Precio mediano: {df['precio'].median():.2f}€")
+        
+        # Mostrar primeros valores
+        print("\n📋 Primeros 5 valores de precio limpios:")
+        print(df[['precio_original', 'precio']].head())
+        
+        # Contar productos sin precio válido
+        productos_sin_precio_valido = df['precio'].isna().sum()
+        productos_con_precio_valido = len(df) - productos_sin_precio_valido
+        
+        print(f"\n📊 Productos con precio válido: {productos_con_precio_valido}")
+        print(f"⚠️  Productos sin precio válido: {productos_sin_precio_valido}")
+        
+        if productos_sin_precio_valido > 0:
+            print(f"\n🔍 Productos sin precio válido (primeros 5):")
+            sin_precio = df[df['precio'].isna()][['nombre', 'precio_original']].head()
+            if not sin_precio.empty:
+                for idx, row in sin_precio.iterrows():
+                    print(f"   - {row['nombre'][:50]}... : {row['precio_original']}")
+        
+        return df
+        
+    except Exception as e:
+        print(f"❌ Error limpiando columna precio: {e}")
+        import traceback
+        traceback.print_exc()
+        return df
+
+# ============================================ #
+#                                              #
+#       CONFIGURACIÓN GOOGLE DRIVE             #
+#                                              #
+# ============================================ #
+
+# ============================================ #
+#                                              #
+#       las funciones de aquí, hay veces que   #
+#   han dado errores, para tener en cuenta en  #
+#                       el futuro              #
+#                                              #
+# ============================================ #
 
 def configurar_google_drive():
     """
@@ -83,178 +191,174 @@ def buscar_archivo_drive(service, nombre_archivo, folder_id):
 
 def descargar_archivo_drive(service, file_id):
     """
-    Descarga un archivo de Google Drive
+    Descarga un archivo de Google Drive.
+    Soporta CSV reales y Google Sheets (exportándolos).
     """
     try:
-        request = service.files().get_media(fileId=file_id)
+        from googleapiclient.http import MediaIoBaseDownload
+        import io
+
+        # Obtener metadata para saber el tipo de archivo
+        metadata = service.files().get(
+            fileId=file_id,
+            fields="mimeType"
+        ).execute()
+
+        mime_type = metadata.get("mimeType")
+
         fh = io.BytesIO()
+
+        # 🟢 CASO 1: Google Sheets → EXPORT
+        if mime_type == "application/vnd.google-apps.spreadsheet":
+            print("📄 Archivo es Google Sheets, exportando como CSV")
+            request = service.files().export(
+                fileId=file_id,
+                mimeType="text/csv"
+            )
+
+        # 🟢 CASO 2: Archivo binario (CSV real)
+        else:
+            print("📄 Archivo es binario, descargando directamente")
+            request = service.files().get_media(fileId=file_id)
+
         downloader = MediaIoBaseDownload(fh, request)
-        
+
         done = False
         while not done:
             status, done = downloader.next_chunk()
-        
+
         fh.seek(0)
-        return fh.getvalue().decode('utf-8')
-        
+        return fh.getvalue().decode("utf-8")
+
     except Exception as e:
         print(f"❌ Error descargando archivo de Drive: {e}")
         return None
 
-def subir_archivo_drive(service, nombre_archivo, contenido, folder_id, file_id=None):
+
+# ============================================ #
+#  Tener ojo en estas partes que puede fallar  #
+# ============================================ #
+
+def subir_archivo_drive(service, nombre_archivo, contenido_csv, folder_id, file_id=None):
     """
-    Sube o actualiza un archivo en Google Drive
+    Sube un archivo CSV a Google Drive.
+    Si file_id se proporciona, actualiza el archivo existente.
+    Si no, crea un nuevo archivo.
     """
     try:
         from googleapiclient.http import MediaIoBaseUpload
+        import io
         
-        file_metadata = {
-            'name': nombre_archivo,
-            'parents': [folder_id]
-        }
-        
+        # Crear un objeto de bytes del CSV
+        csv_bytes = contenido_csv.encode('utf-8')
         media = MediaIoBaseUpload(
-            io.BytesIO(contenido.encode('utf-8')),
+            io.BytesIO(csv_bytes), 
             mimetype='text/csv',
-            resumable=True
+            resumable=False
         )
         
+        # Si hay un file_id, actualizar el archivo existente
         if file_id:
-            # Actualizar archivo existente
-            archivo = service.files().update(
+            print(f"📤 Actualizando archivo existente en Drive (ID: {file_id})")
+            file = service.files().update(
                 fileId=file_id,
                 media_body=media
             ).execute()
-            print(f"✅ Archivo actualizado en Google Drive: {archivo.get('name')}")
+            print("✅ Archivo actualizado en Drive")
+        # Si no, crear un nuevo archivo
         else:
-            # Crear nuevo archivo
-            archivo = service.files().create(
+            print("📤 Creando nuevo archivo en Drive")
+            file_metadata = {
+                'name': nombre_archivo,
+                'parents': [folder_id],
+                'mimeType': 'text/csv'
+            }
+            file = service.files().create(
                 body=file_metadata,
                 media_body=media,
                 fields='id'
             ).execute()
-            print(f"✅ Nuevo archivo creado en Google Drive: {nombre_archivo}")
+            print(f"✅ Nuevo archivo creado en Drive (ID: {file.get('id')})")
         
-        return archivo
+        return True
         
     except Exception as e:
         print(f"❌ Error subiendo archivo a Drive: {e}")
-        return None
-
-def actualizar_csv_drive(df_nuevo, folder_id="1fIOGpJEZ2dgUu4C6SkkZm0iPnICpWldb", nombre_archivo="smartphones_mediamarkt.csv"):
-    """
-    Actualiza un archivo CSV en Google Drive combinando datos existentes con nuevos
-    NO elimina duplicados entre días diferentes - conserva historial diario
-    """
-    print("\n" + "="*60)
-    print("ACTUALIZANDO GOOGLE DRIVE")
-    print("="*60)
-    
-    # Configurar Google Drive
-    service = configurar_google_drive()
-    if not service:
-        print("⚠️  Omitiendo actualización en Google Drive")
-        return False
-    
-    try:
-        # Buscar archivo existente
-        archivo_existente = buscar_archivo_drive(service, nombre_archivo, folder_id)
-        
-        if archivo_existente:
-            print(f"📁 Archivo encontrado en Drive: {archivo_existente['name']}")
-            print(f"📅 Última modificación: {archivo_existente.get('modifiedTime', 'Desconocida')}")
-            
-            # Descargar archivo existente
-            contenido_existente = descargar_archivo_drive(service, archivo_existente['id'])
-            
-            if contenido_existente:
-                # Leer CSV existente
-                df_existente = pd.read_csv(io.StringIO(contenido_existente))
-                print(f"📊 Registros existentes en Drive: {len(df_existente)}")
-                
-                # Verificar si hay columnas comunes
-                columnas_existente = set(df_existente.columns)
-                columnas_nuevo = set(df_nuevo.columns)
-                
-                # Encontrar columnas comunes
-                columnas_comunes = list(columnas_existente & columnas_nuevo)
-                
-                if columnas_comunes:
-                    print(f"📋 Columnas comunes: {columnas_comunes}")
-                    
-                    # Seleccionar solo columnas comunes de ambos DataFrames
-                    df_existente_compatible = df_existente[columnas_comunes]
-                    df_nuevo_compatible = df_nuevo[columnas_comunes]
-                    
-                    # COMBINAR sin eliminar duplicados entre días diferentes
-                    df_combinado = pd.concat([df_existente_compatible, df_nuevo_compatible], ignore_index=True)
-                    
-                    # ELIMINAR SOLO duplicados exactos (misma ejecución)
-                    duplicados_exactos = df_combinado.duplicated(keep='first').sum()
-                    df_combinado = df_combinado.drop_duplicates(keep='first')
-                    
-                    print(f"🗑️  Duplicados exactos eliminados: {duplicados_exactos}")
-                    print(f"📈 Registros después de combinar: {len(df_combinado)}")
-                    print(f"➕ Nuevos registros añadidos: {len(df_nuevo)}")
-                    
-                    # Registros de hoy
-                    fecha_hoy = datetime.now().strftime("%Y-%m-%d")
-                    registros_hoy = df_combinado[df_combinado['fecha_extraccion'].str.contains(fecha_hoy)].shape[0]
-                    print(f"📅 Registros de hoy ({fecha_hoy}): {registros_hoy}")
-                    
-                else:
-                    print("⚠️  No hay columnas comunes entre los DataFrames")
-                    print(f"  Columnas existentes: {list(columnas_existente)}")
-                    print(f"  Columnas nuevas: {list(columnas_nuevo)}")
-                    df_combinado = df_nuevo
-            else:
-                print("⚠️  No se pudo descargar el archivo existente, creando uno nuevo")
-                df_combinado = df_nuevo
-        else:
-            print("📝 No se encontró archivo existente, creando uno nuevo")
-            df_combinado = df_nuevo
-        
-        # Convertir DataFrame combinado a CSV
-        csv_contenido = df_combinado.to_csv(index=False, encoding='utf-8')
-        
-        # Subir/actualizar archivo en Drive
-        file_id = archivo_existente['id'] if archivo_existente else None
-        archivo = subir_archivo_drive(service, nombre_archivo, csv_contenido, folder_id, file_id)
-        
-        if archivo:
-            print(f"✅ Google Drive actualizado exitosamente")
-            print(f"📊 Total de registros en archivo combinado: {len(df_combinado)}")
-            
-            if 'fecha_extraccion' in df_combinado.columns:
-                fechas_unicas = df_combinado['fecha_extraccion'].str[:10].nunique()
-                print(f"📅 Días diferentes en el dataset: {fechas_unicas}")
-                
-                print("\n📊 Distribución por fecha:")
-                distribucion = df_combinado['fecha_extraccion'].str[:10].value_counts().sort_index()
-                for fecha, cantidad in distribucion.items():
-                    print(f"  {fecha}: {cantidad} registros")
-            
-            return True
-        else:
-            print("❌ Error actualizando Google Drive")
-            return False
-            
-    except Exception as e:
-        print(f"❌ Error en el proceso de Google Drive: {e}")
         import traceback
         traceback.print_exc()
         return False
 
-# ============================================
-# FUNCIONES DE SCRAPING (EXACTLY like old notebook)
-# ============================================
+def actualizar_csv_drive(
+    df_nuevo,
+    folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7", #cambio en caso de que quiera, que querré...
+    nombre_archivo="smartphones_mediamarkt.csv" #cambio del nombre del archivo. 
+):
+    print("\n" + "="*60)
+    print("ACTUALIZANDO GOOGLE DRIVE – HISTÓRICO REAL (APPEND)")
+    print("="*60)
+
+    service = configurar_google_drive()
+    if not service:
+        print("⚠️ Google Drive no disponible")
+        return False
+
+    archivo_existente = buscar_archivo_drive(service, nombre_archivo, folder_id)
+
+    if archivo_existente:
+        print("📁 Archivo histórico encontrado")
+
+        contenido = descargar_archivo_drive(service, archivo_existente["id"])
+        if not contenido:
+            print("❌ No se pudo descargar el histórico")
+            return False
+
+        df_existente = pd.read_csv(io.StringIO(contenido))
+        print(f"📊 Filas históricas: {len(df_existente)}")
+
+        # CONCAT SEGURO (NO REORDENA, NO BORRA)
+        df_combinado = pd.concat(
+            [df_existente, df_nuevo],
+            ignore_index=True,
+            sort=False
+        )
+
+    else:
+        print("🆕 No existe histórico, creando nuevo")
+        df_combinado = df_nuevo.copy()
+
+    # Eliminar SOLO duplicados exactos
+    filas_antes = len(df_combinado)
+    df_combinado = df_combinado.drop_duplicates()
+    filas_despues = len(df_combinado)
+
+    print(f"🧹 Duplicados exactos eliminados: {filas_antes - filas_despues}")
+    print(f"📊 Total final en histórico: {len(df_combinado)}")
+
+    csv_contenido = df_combinado.to_csv(index=False, encoding="utf-8")
+
+    subir_archivo_drive(
+        service,
+        nombre_archivo,
+        csv_contenido,
+        folder_id,
+        archivo_existente["id"] if archivo_existente else None
+    )
+
+    print("✅ Histórico actualizado correctamente en Google Drive")
+    return True
+
+# ============================================ #
+#                                              #
+#      FUNCIONES DEL SCRAPING                  #
+#                                              #
+# ============================================ #
 
 def setup_chrome_options():
     """Configura Chrome para ejecución headless (optimizado)"""
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")  # ← FIXED: removed extra "
+    chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
@@ -264,16 +368,6 @@ def setup_chrome_options():
     chrome_options.add_experimental_option("prefs", prefs)
     
     return chrome_options
-
-def generar_id_consistente(nombre):
-    """
-    Genera un ID único y consistente basado en el nombre del producto
-    El mismo producto siempre tendrá el mismo ID
-    """
-    # Crear un hash MD5 del nombre (normalizado a minúsculas y sin espacios extra)
-    nombre_normalizado = str(nombre).lower().strip()
-    hash_obj = hashlib.md5(nombre_normalizado.encode('utf-8'))
-    return hash_obj.hexdigest()[:12]  # Tomamos los primeros 12 caracteres del hash
 
 def mediamark_mob_(url):
     """Inicializa el navegador Chrome - EXACTLY like old notebook"""
@@ -300,6 +394,12 @@ def mediamark_mob_(url):
     except Exception as e:
         print(f"❌ Error inicializando Chrome: {e}")
         raise
+
+# ============================================ #
+#                                              #
+#       OBTENER PRECIO PRODUCTOS               #
+#                                              #
+# ============================================ #
 
 def obtener_total_articulos(driver):
     """
@@ -388,13 +488,13 @@ def extraer_productos_pagina(driver):
                 nombre = titulo.text
                 precio = extraer_precio_producto(contenedor)
                 
-                # Generar ID consistente
-                producto_id = generar_id_consistente(nombre)
+                # Extraer marca del ebook
+                marca = extraer_marca_ebook(nombre)
                 
                 productos_pagina.append({
-                    'id': producto_id,
                     'nombre': nombre,
-                    'precio': precio
+                    'precio': precio,
+                    'marca': marca
                 })
                 
             except Exception as e:
@@ -406,6 +506,10 @@ def extraer_productos_pagina(driver):
     except Exception as e:
         print(f"❌ Error extrayendo productos de la página: {e}")
         return productos_pagina
+    
+# ============================================ # 
+#       Cambio de URL más abajo                #
+# ============================================ #
 
 def extraer_productos(driver):
     """
@@ -437,7 +541,7 @@ def extraer_productos(driver):
                 try:
                     print(f"📖 Página {pagina}/30 - Criterio: {criterio}")
                     
-                    url_pagina = f"https://www.mediamarkt.es/es/category/smartphones-263.html?sort={criterio}&page={pagina}"
+                    url_pagina = f"https://www.mediamarkt.es/es/category/smartphones-263.html?sort={criterio}&page={pagina}" #cambio de url!!!!
                     
                     driver.get(url_pagina)
                     time.sleep(2)
@@ -453,9 +557,9 @@ def extraer_productos(driver):
                     productos_pagina = extraer_productos_pagina(driver)
                     
                     for producto in productos_pagina:
-                        producto_id = producto['id']
-                        if producto_id not in productos_unicos:
-                            productos_unicos.add(producto_id)
+                        nombre_producto = producto['nombre']
+                        if nombre_producto not in productos_unicos:
+                            productos_unicos.add(nombre_producto)
                             producto['numero'] = contador_global
                             contador_global += 1
                             productos_data.append(producto)
@@ -498,45 +602,75 @@ def guardar_en_dataframe(productos_data):
     fecha_extraccion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     df['fecha_extraccion'] = fecha_extraccion
     
-    column_order = ['fecha_extraccion', 'id', 'numero', 'nombre', 'precio']
+    # Limpiar columna precio antes de guardar
+    df = limpiar_columna_precio(df)
+    
+    # Orden de columnas con la nueva columna 'marca'
+    column_order = ['fecha_extraccion', 'numero', 'nombre', 'marca', 'precio']
+    if 'precio_original' in df.columns:
+        column_order.append('precio_original')
     df = df[column_order]
     
     os.makedirs("scraping_results", exist_ok=True)
+
+# ============================================ #  
+#   Hay que cambiar el nombre del archivo      #
+# ============================================ #
     
-    nombre_archivo = f"scraping_results/smartphones_mediamarkt_completo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    nombre_archivo = f"scraping_results/smartphones_mediamarkt_completo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv" #cambiar aqui el nombre del archivo que se descarga.
     file_path = nombre_archivo
     df.to_csv(file_path, index=False, encoding='utf-8')
     
     print(f"\n✅ Datos guardados en: {file_path}")
     print(f"📊 Total de productos únicos: {len(df)}")
     
-    productos_con_precio = len(df[df['precio'].str.contains('€', na=False)])
-    productos_sin_precio = len(df) - productos_con_precio
+    # Estadísticas de marcas
+    print(f"🏷️  Distribución de marcas:")
+    distribucion_marcas = df['marca'].value_counts()
+    for marca, cantidad in distribucion_marcas.head(10).items():
+        print(f"   {marca}: {cantidad} productos")
     
-    print(f"💰 Productos con precio: {productos_con_precio}")
-    print(f"❌ Productos sin precio: {productos_sin_precio}")
+    if len(distribucion_marcas) > 10:
+        print(f"   ... y {len(distribucion_marcas) - 10} marcas más")
+    
+    # Estadísticas de precios
+    productos_con_precio_valido = df['precio'].notna().sum()
+    productos_sin_precio_valido = df['precio'].isna().sum()
+    
+    print(f"\n💰 Productos con precio válido: {productos_con_precio_valido}")
+    print(f"⚠️  Productos sin precio válido: {productos_sin_precio_valido}")
+    
+    if productos_con_precio_valido > 0:
+        print(f"📈 Precio promedio: {df['precio'].mean():.2f}€")
+        print(f"📊 Precio mediano: {df['precio'].median():.2f}€")
+        print(f"📉 Precio mínimo: {df['precio'].min():.2f}€")
+        print(f"📈 Precio máximo: {df['precio'].max():.2f}€")
     
     print("\n📋 Primeras 5 filas del DataFrame:")
     print(df.head())
     
     return df, file_path
 
-# ============================================
-# FUNCIÓN PRINCIPAL
-# ============================================
+# ============================================ #
+#                                              #
+#      FUNCION PRINCIPAL                       #
+#                                              #
+# ============================================ #
 
 def main():
     """Función principal"""
     print("="*60)
-    print("SCRAPING DE SMARTPHONES - MEDIAMARKT")
+    print("SCRAPING DE EBOOKS - MEDIAMARKT")
     print("="*60)
     print(f"Fecha y hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
     driver = None
-    
+# ============================================ #  
+#   Hay que cambiar la url                     #
+# ============================================ #   
     try:
-        url = "https://www.mediamarkt.es/es/category/smartphones-263.html?sort=currentprice+desc"
+        url = "https://www.mediamarkt.es/es/category/smartphones-263.html?sort=currentprice+desc" #cambio de url!!!!
         
         print(f"\n🌐 Accediendo a: {url}")
         
@@ -570,6 +704,8 @@ def main():
         print("="*60)
         print(f"✅ Scraping completado exitosamente")
         print(f"📦 Productos obtenidos hoy: {len(df)}")
+        print(f"🏷️  Marcas diferentes encontradas: {df['marca'].nunique()}")
+        print(f"💰 Precios válidos obtenidos: {df['precio'].notna().sum()}")
         print(f"📁 Archivo local generado: {archivo_csv}")
         print(f"💾 Google Drive: Datos añadidos al archivo histórico")
         
