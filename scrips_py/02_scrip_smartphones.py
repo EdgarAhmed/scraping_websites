@@ -51,6 +51,53 @@ def extraer_marca(nombre):
 
 # ============================================ #
 #                                              #
+#    FUNCIONES PARA GENERAR IDs ÚNICOS         #
+#                                              #
+# ============================================ #
+
+def generar_id_consistente(nombre):
+    """
+    Genera un ID único y consistente basado en el nombre del producto
+    El mismo producto siempre tendrá el mismo ID
+    """
+    # Normalizar el nombre: minúsculas, sin espacios extra, caracteres especiales
+    nombre_normalizado = str(nombre).lower().strip()
+    nombre_normalizado = re.sub(r'\s+', ' ', nombre_normalizado)  # Reemplazar múltiples espacios por uno
+    
+    # Crear un hash MD5 del nombre normalizado
+    hash_obj = hashlib.md5(nombre_normalizado.encode('utf-8'))
+    hash_hex = hash_obj.hexdigest()
+    
+    # Tomar los primeros 12 caracteres del hash para un ID legible
+    return hash_hex[:12]
+
+def generar_id_descriptivo(nombre, marca=""):
+    """
+    Genera un ID más descriptivo combinando marca y hash
+    """
+    # Normalizar inputs
+    nombre_norm = str(nombre).lower().strip()
+    marca_norm = str(marca).lower().strip() if marca else ""
+    
+    # Crear una clave combinada
+    if marca_norm:
+        clave = f"{marca_norm}:{nombre_norm}"
+    else:
+        clave = nombre_norm
+    
+    # Generar hash
+    hash_obj = hashlib.md5(clave.encode('utf-8'))
+    hash_hex = hash_obj.hexdigest()[:8]  # Más corto
+    
+    # Si tenemos marca, crear ID del tipo "MARCA_HASH"
+    if marca_norm:
+        marca_abrev = marca_norm[:4].upper()
+        return f"{marca_abrev}_{hash_hex}"
+    else:
+        return hash_hex
+
+# ============================================ #
+#                                              #
 #          LIMPIA PRECIOS                      #
 #                                              #
 # ============================================ #
@@ -639,14 +686,35 @@ def guardar_en_dataframe(productos_data):
     df['marca'] = df['nombre'].apply(extraer_marca)
     print(f"🏷️  Total de marcas extraídas: {df['marca'].nunique()}")
     
+    # Verificar si ya tenemos IDs generados
+    if 'id' not in df.columns:
+        print("\n" + "="*60)
+        print("GENERANDO IDs ÚNICOS PARA PRODUCTOS")
+        print("="*60)
+        # Si no hay columna 'id', generamos los IDs
+        df['id'] = df['nombre'].apply(generar_id_consistente)
+        print(f"✅ IDs generados para {len(df)} productos")
+        print(f"📊 IDs únicos: {df['id'].nunique()}")
+        print(f"🔍 Ejemplo de IDs generados:")
+        for i, (nombre, producto_id) in enumerate(zip(df['nombre'].head(3), df['id'].head(3))):
+            print(f"   {i+1}. {nombre[:30]}... → ID: {producto_id}")
+    
     # Limpiar columna precio después de agregar marca
     df = limpiar_columna_precio(df)
     
-    # Orden de columnas con la nueva columna 'marca'
-    column_order = ['fecha_extraccion', 'numero', 'nombre', 'marca', 'precio']
+    # ORDEN CORREGIDO: Incluir la columna 'id' en el orden
+    column_order = ['fecha_extraccion', 'id', 'numero', 'nombre', 'marca', 'precio']
     if 'precio_original' in df.columns:
         column_order.append('precio_original')
-    df = df[column_order]
+    
+    # Asegurar que todas las columnas existan
+    existing_columns = [col for col in column_order if col in df.columns]
+    missing_columns = [col for col in column_order if col not in df.columns]
+    
+    if missing_columns:
+        print(f"⚠️  Advertencia: Columnas faltantes en DataFrame: {missing_columns}")
+    
+    df = df[existing_columns]
     
     os.makedirs("scraping_results", exist_ok=True)
 
@@ -669,6 +737,18 @@ def guardar_en_dataframe(productos_data):
     
     if len(distribucion_marcas) > 10:
         print(f"   ... y {len(distribucion_marcas) - 10} marcas más")
+    
+    # Estadísticas de IDs
+    print(f"\n🔑 Estadísticas de IDs:")
+    print(f"   IDs únicos: {df['id'].nunique()}")
+    print(f"   Productos duplicados (mismo ID): {len(df) - df['id'].nunique()}")
+    
+    if df['id'].nunique() < len(df):
+        print(f"   ⚠️  Hay {len(df) - df['id'].nunique()} productos con IDs duplicados")
+        duplicados = df[df.duplicated('id', keep=False)]
+        print(f"   📋 Productos con IDs duplicados (primeros 3):")
+        for _, row in duplicados.head(3).iterrows():
+            print(f"      - ID: {row['id']} → {row['nombre'][:40]}...")
     
     # Estadísticas de precios
     productos_con_precio_valido = df['precio'].notna().sum()
@@ -741,6 +821,7 @@ def main():
         print("="*60)
         print(f"✅ Scraping completado exitosamente")
         print(f"📦 Productos obtenidos hoy: {len(df)}")
+        print(f"🔑 IDs únicos generados: {df['id'].nunique()}")
         print(f"🏷️  Marcas diferentes encontradas: {df['marca'].nunique()}")
         print(f"💰 Precios válidos obtenidos: {df['precio'].notna().sum()}")
         print(f"📁 Archivo local generado: {archivo_csv}")
