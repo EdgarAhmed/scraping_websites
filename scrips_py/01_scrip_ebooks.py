@@ -242,18 +242,42 @@ def buscar_archivo_drive(service, nombre_archivo, folder_id):
 # ============================================ #
 # esta función también da error. es la que     #
 # actualizo en este ultimo commit.             #
-#                                              #
+# ============================================ #
+# se vuelve a cambiar esta línea               #
 # ============================================ #
 
 def descargar_archivo_drive(service, file_id):
     """
-    Descarga un archivo de Google Drive
+    Descarga un archivo de Google Drive.
+    Soporta CSV reales y Google Sheets (exportándolos).
     """
     try:
-        from googleapiclient.http import MediaIoBaseDownload  # 👈 IMPORT AQUÍ
+        from googleapiclient.http import MediaIoBaseDownload
+        import io
 
-        request = service.files().get_media(fileId=file_id)
+        # Obtener metadata para saber el tipo de archivo
+        metadata = service.files().get(
+            fileId=file_id,
+            fields="mimeType"
+        ).execute()
+
+        mime_type = metadata.get("mimeType")
+
         fh = io.BytesIO()
+
+        # 🟢 CASO 1: Google Sheets → EXPORT
+        if mime_type == "application/vnd.google-apps.spreadsheet":
+            print("📄 Archivo es Google Sheets, exportando como CSV")
+            request = service.files().export(
+                fileId=file_id,
+                mimeType="text/csv"
+            )
+
+        # 🟢 CASO 2: Archivo binario (CSV real)
+        else:
+            print("📄 Archivo es binario, descargando directamente")
+            request = service.files().get_media(fileId=file_id)
+
         downloader = MediaIoBaseDownload(fh, request)
 
         done = False
@@ -261,51 +285,12 @@ def descargar_archivo_drive(service, file_id):
             status, done = downloader.next_chunk()
 
         fh.seek(0)
-        return fh.getvalue().decode('utf-8')
+        return fh.getvalue().decode("utf-8")
 
     except Exception as e:
         print(f"❌ Error descargando archivo de Drive: {e}")
         return None
 
-def subir_archivo_drive(service, nombre_archivo, contenido, folder_id, file_id=None):
-    """
-    Sube o actualiza un archivo en Google Drive
-    """
-    try:
-        from googleapiclient.http import MediaIoBaseUpload
-        
-        file_metadata = {
-            'name': nombre_archivo,
-            'parents': [folder_id]
-        }
-        
-        media = MediaIoBaseUpload(
-            io.BytesIO(contenido.encode('utf-8')),
-            mimetype='text/csv',
-            resumable=True
-        )
-        
-        if file_id:
-            # Actualizar archivo existente
-            archivo = service.files().update(
-                fileId=file_id,
-                media_body=media
-            ).execute()
-            print(f"✅ Archivo actualizado en Google Drive: {archivo.get('name')}")
-        else:
-            # Crear nuevo archivo
-            archivo = service.files().create(
-                body=file_metadata,
-                media_body=media,
-                fields='id'
-            ).execute()
-            print(f"✅ Nuevo archivo creado en Google Drive: {nombre_archivo}")
-        
-        return archivo
-        
-    except Exception as e:
-        print(f"❌ Error subiendo archivo a Drive: {e}")
-        return None
 # ============================================ #
 #                                              #
 #      ACTULIZAR EL ID DE LA CARPETA Y EL      #
