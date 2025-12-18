@@ -80,9 +80,9 @@ jobs:
         if [ -f "scrips_py/04_scrip_laptops.py" ]; then
           echo "✅ Found script at: scrips_py/04_scrip_laptops.py"
           SCRIPT_PATH="scrips_py/04_scrip_laptops.py"
-        elif [ -f "scrips_py/scrip_ebooks.py" ]; then
-          echo "✅ Found script at: scrips_py/scrip_ebooks.py"
-          SCRIPT_PATH="scrips_py/scrip_ebooks.py"
+        elif [ -f "scrips_py/04_scrip_laptops.py" ]; then
+          echo "✅ Found script at: scrips_py/04_scrip_laptops.py"
+          SCRIPT_PATH="scrips_py/04_scrip_laptops.py"
         else
           echo "❌ Script not found in scrips_py directory."
           echo "🔍 Looking for Python files in scrips_py..."
