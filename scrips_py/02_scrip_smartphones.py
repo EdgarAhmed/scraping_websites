@@ -20,6 +20,7 @@ import re
 import sys
 import io
 import json
+import hashlib
 
 # ============================================ #
 #                                              #
