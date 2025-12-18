@@ -1,0 +1,128 @@
+name: Daily TVs Scraping Job
+
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+jobs:
+  run-scraping:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.9'
+        
+    - name: Install Chrome
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wget unzip gnupg
+        
+        # Install Chrome
+        wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome-keyring.gpg
+        echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+        sudo apt-get update
+        sudo apt-get install -y google-chrome-stable
+        
+        google-chrome --version
+        
+    - name: Install Python dependencies
+      run: |
+        pip install --upgrade pip
+        
+        # Main dependencies
+        pip install selenium pandas webdriver-manager lxml
+        
+        # Google Drive API dependencies
+        pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
+        
+        # If requirements.txt exists, install it too
+        if [ -f "requirements.txt" ]; then
+          pip install -r requirements.txt
+        fi
+        
+    - name: Run Python scraping script
+      env:
+        # Environment variables for Chrome
+        DISPLAY: :99
+        PYTHONUNBUFFERED: 1
+        
+        # Google Drive credentials (configure this in GitHub Secrets)
+        GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+      run: |
+        echo "📁 Working directory: $(pwd)"
+        echo "📁 Repository structure:"
+        ls -la
+        echo ""
+        echo "📁 Contents of scrips_py directory:"
+        ls -la scrips_py/ 2>/dev/null || echo "scrips_py directory not found or empty"
+        
+        echo "🚀 Starting MediaMarkt ebooks scraping..."
+        echo "🔄 Configuring Google Drive..."
+        
+        # Check if Google Drive credentials are available
+        if [ -z "$GOOGLE_CREDENTIALS_JSON" ]; then
+          echo "⚠️  WARNING: No Google Drive credentials configured"
+          echo "ℹ️   The script will run but won't update Google Drive"
+        else:
+          echo "✅ Google Drive credentials configured"
+        fi
+        
+        # Create directory for results
+        mkdir -p scraping_results
+        
+        # Check for the script in scrips_py directory
+        if [ -f "scrips_py/07_scrip_tvs.py" ]; then
+          echo "✅ Found script at: scrips_py/07_scrip_tvs.py"
+          SCRIPT_PATH="scrips_py/07_scrip_tvs.py"
+        elif [ -f "scrips_py/07_scrip_tvs.py" ]; then
+          echo "✅ Found script at: scrips_py/07_scrip_tvs.py"
+          SCRIPT_PATH="scrips_py/07_scrip_tvs.py"
+        else
+          echo "❌ Script not found in scrips_py directory."
+          echo "🔍 Looking for Python files in scrips_py..."
+          find scrips_py -name "*.py" 2>/dev/null || echo "No Python files found in scrips_py"
+          echo ""
+          echo "🔍 Looking for script files in entire repository..."
+          find . -name "*ebook*.py" -type f 2>/dev/null || echo "No ebook scraping scripts found"
+          exit 1
+        fi
+        
+        # Execute the script
+        echo "🚀 Executing script: $SCRIPT_PATH"
+        python $SCRIPT_PATH
+        
+        echo "✅ Script executed. Checking results..."
+        
+        # List generated files
+        echo "📄 Generated files in scraping_results/:"
+        ls -la scraping_results/ 2>/dev/null || echo "No results in scraping_results/"
+        echo ""
+        echo "📄 All CSV files in repository:"
+        find . -name "*.csv" -type f 2>/dev/null | head -20 || echo "No CSV files found"
+        
+    - name: Upload results as artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: scraping-output
+        path: |
+          scraping_results/*.csv
+          *.csv
+        retention-days: 7
+        
+    - name: Notify on failure
+      if: failure()
+      run: |
+        echo "❌ MediaMarkt scraping has failed"
+        echo "Check the logs for more details"
+        echo ""
+        echo "Possible issues:"
+        echo "1. Script not found in scrips_py directory"
+        echo "2. Google Drive credentials missing or incorrect"
+        echo "3. Website structure changed"
+        echo "4. Chrome installation failed"
