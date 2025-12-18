@@ -613,16 +613,17 @@ def extraer_precio_producto(contenedor_producto):
 #    Esta función genera IDs consistentes      #
 #     No estaba antes                          #
 # ============================================ #
-
+"""
 def generar_id_consistente(nombre):
-    """
+    
     Genera un ID único y consistente basado en el nombre del producto
     El mismo producto siempre tendrá el mismo ID
-    """
+    
     # Crear un hash MD5 del nombre (normalizado a minúsculas y sin espacios extra)
     nombre_normalizado = str(nombre).lower().strip()
     hash_obj = hashlib.md5(nombre_normalizado.encode('utf-8'))
     return hash_obj.hexdigest()[:12]  # Tomamos los primeros 12 caracteres del hash
+    """
 
 # ============================================ #
 #    cambio esta función que daba error antes  #
