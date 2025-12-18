@@ -185,6 +185,14 @@ def limpiar_columna_precio(df):
 #                                              #
 # ============================================ #
 
+# ============================================ #
+#                                              #
+#       las funciones de aquí, hay veces que   #
+#   han dado errores, para tener en cuenta en  #
+#                       el futuro              #
+#                                              #
+# ============================================ #
+
 def configurar_google_drive():
     """
     Configura y autentica con Google Drive usando credenciales de servicio
@@ -285,6 +293,11 @@ def descargar_archivo_drive(service, file_id):
         print(f"❌ Error descargando archivo de Drive: {e}")
         return None
 
+
+# ============================================ #
+#  Tener ojo en estas partes que puede fallar  #
+# ============================================ #
+
 def subir_archivo_drive(service, nombre_archivo, contenido_csv, folder_id, file_id=None):
     """
     Sube un archivo CSV a Google Drive.
@@ -336,8 +349,8 @@ def subir_archivo_drive(service, nombre_archivo, contenido_csv, folder_id, file_
 
 def actualizar_csv_drive(
     df_nuevo,
-    folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7",
-    nombre_archivo="ebooks_mediamarkt.csv"
+    folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7", #cambio en caso de que quiera, que querré...
+    nombre_archivo="ebooks_mediamarkt.csv" #cambio del nombre del archivo. 
 ):
     print("\n" + "="*60)
     print("ACTUALIZANDO GOOGLE DRIVE – HISTÓRICO REAL (APPEND)")
@@ -552,6 +565,10 @@ def extraer_productos_pagina(driver):
     except Exception as e:
         print(f"❌ Error extrayendo productos de la página: {e}")
         return productos_pagina
+    
+# ============================================ # 
+#       Cambio de URL más abajo                #
+# ============================================ #
 
 def extraer_productos(driver):
     """
@@ -583,7 +600,7 @@ def extraer_productos(driver):
                 try:
                     print(f"📖 Página {pagina}/30 - Criterio: {criterio}")
                     
-                    url_pagina = f"https://www.mediamarkt.es/es/category/ebooks-249.html?sort={criterio}&page={pagina}"
+                    url_pagina = f"https://www.mediamarkt.es/es/category/ebooks-249.html?sort={criterio}&page={pagina}" #cambio de url!!!!
                     
                     driver.get(url_pagina)
                     time.sleep(2)
@@ -654,8 +671,12 @@ def guardar_en_dataframe(productos_data):
     df = df[column_order]
     
     os.makedirs("scraping_results", exist_ok=True)
+
+# ============================================ #  
+#   Hay que cambiar el nombre del archivo      #
+# ============================================ #
     
-    nombre_archivo = f"scraping_results/ebooks_mediamarkt_completo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    nombre_archivo = f"scraping_results/ebooks_mediamarkt_completo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv" #cambiar aqui el nombre del archivo que se descarga.
     file_path = nombre_archivo
     df.to_csv(file_path, index=False, encoding='utf-8')
     
@@ -704,9 +725,11 @@ def main():
     print("="*60)
     
     driver = None
-    
+# ============================================ #  
+#   Hay que cambiar la url                     #
+# ============================================ #   
     try:
-        url = "https://www.mediamarkt.es/es/category/ebooks-249.html?sort=currentprice+desc"
+        url = "https://www.mediamarkt.es/es/category/ebooks-249.html?sort=currentprice+desc" #cambio de url!!!!
         
         print(f"\n🌐 Accediendo a: {url}")
         
