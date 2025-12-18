@@ -460,21 +460,29 @@ def extraer_precio_producto(contenedor_producto):
         
     except Exception as e:
         return f"Error: {e}"
+    
+
+# ============================================ #
+#    cambio esta función que daba error antes  #
+#                                              #
+# ============================================ #
 
 def extraer_productos_pagina(driver):
     """
     Extrae los productos de una sola página
-    EXACTLY like old notebook
     """
     productos_pagina = []
     
     try:
+        # Buscar todos los títulos de productos en la página actual
         productos_titulos = driver.find_elements(By.CSS_SELECTOR, 'p[data-test="product-title"]')
         
         print(f"   🔍 Encontrados {len(productos_titulos)} productos en la página")
         
+        # Para cada título, encontrar su contenedor y extraer información
         for i, titulo in enumerate(productos_titulos):
             try:
+                # Encontrar el contenedor del producto
                 contenedor = titulo
                 for _ in range(5):
                     contenedor = contenedor.find_element(By.XPATH, "./..")
@@ -485,16 +493,17 @@ def extraer_productos_pagina(driver):
                     except:
                         continue
                 
+                # Extraer nombre y precio
                 nombre = titulo.text
                 precio = extraer_precio_producto(contenedor)
                 
-                # Extraer marca del ebook
-                marca = extraer_marca_ebook(nombre)
+                # CAMBIADO: Generar ID consistente basado en el nombre
+                producto_id = generar_id_consistente(nombre)
                 
                 productos_pagina.append({
+                    'id': producto_id,
                     'nombre': nombre,
-                    'precio': precio,
-                    'marca': marca
+                    'precio': precio
                 })
                 
             except Exception as e:
@@ -660,7 +669,7 @@ def guardar_en_dataframe(productos_data):
 def main():
     """Función principal"""
     print("="*60)
-    print("SCRAPING DE EBOOKS - MEDIAMARKT")
+    print("SCRAPING DE Smartphones - MEDIAMARKT")
     print("="*60)
     print(f"Fecha y hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
