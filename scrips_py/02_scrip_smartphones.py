@@ -612,6 +612,11 @@ def extraer_productos(driver):
     except Exception as e:
         print(f"❌ Error extrayendo productos: {e}")
         return productos_data
+    
+
+# ============================================ # 
+#       Hubo cambio aqui tmb daba error        #
+# ============================================ #   
 
 def guardar_en_dataframe(productos_data):
     """
@@ -627,7 +632,14 @@ def guardar_en_dataframe(productos_data):
     fecha_extraccion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     df['fecha_extraccion'] = fecha_extraccion
     
-    # Limpiar columna precio antes de guardar
+    # CORRECCIÓN: Agregar columna de marca ANTES de limpiar precios
+    print("\n" + "="*60)
+    print("EXTRACCIÓN DE MARCAS")
+    print("="*60)
+    df['marca'] = df['nombre'].apply(extraer_marca)
+    print(f"🏷️  Total de marcas extraídas: {df['marca'].nunique()}")
+    
+    # Limpiar columna precio después de agregar marca
     df = limpiar_columna_precio(df)
     
     # Orden de columnas con la nueva columna 'marca'
@@ -638,11 +650,11 @@ def guardar_en_dataframe(productos_data):
     
     os.makedirs("scraping_results", exist_ok=True)
 
-# ============================================ #  
-#   Hay que cambiar el nombre del archivo      #
-# ============================================ #
-    
-    nombre_archivo = f"scraping_results/smartphones_mediamarkt_completo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv" #cambiar aqui el nombre del archivo que se descarga.
+# ============================================ # 
+#      Cambiar url                             #
+# ============================================ #   
+
+    nombre_archivo = f"scraping_results/smartphones_mediamarkt_completo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     file_path = nombre_archivo
     df.to_csv(file_path, index=False, encoding='utf-8')
     
