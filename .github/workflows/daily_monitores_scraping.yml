@@ -1,4 +1,4 @@
-name: Daily ebooks Scraping Job
+name: Daily monitores Scraping Job
 
 on:
   schedule:
