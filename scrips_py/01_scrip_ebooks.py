@@ -181,7 +181,7 @@ def limpiar_columna_precio(df):
 
 # ============================================ #
 #                                              #
-#       CONFIGURACIÓN GOOGLE DRIVE     #
+#       CONFIGURACIÓN GOOGLE DRIVE             #
 #                                              #
 # ============================================ #
 
@@ -239,23 +239,30 @@ def buscar_archivo_drive(service, nombre_archivo, folder_id):
     except Exception as e:
         print(f"❌ Error buscando archivo en Drive: {e}")
         return None
+# ============================================ #
+# esta función también da error. es la que     #
+# actualizo en este ultimo commit.             #
+#                                              #
+# ============================================ #
 
 def descargar_archivo_drive(service, file_id):
     """
     Descarga un archivo de Google Drive
     """
     try:
+        from googleapiclient.http import MediaIoBaseDownload  # 👈 IMPORT AQUÍ
+
         request = service.files().get_media(fileId=file_id)
         fh = io.BytesIO()
         downloader = MediaIoBaseDownload(fh, request)
-        
+
         done = False
         while not done:
             status, done = downloader.next_chunk()
-        
+
         fh.seek(0)
         return fh.getvalue().decode('utf-8')
-        
+
     except Exception as e:
         print(f"❌ Error descargando archivo de Drive: {e}")
         return None
