@@ -20,7 +20,7 @@ import re
 import sys
 import io
 import json
-import hashlib
+import hashlib  # Importar hashlib para generar IDs
 
 # ============================================ #
 #                                              #
@@ -48,7 +48,7 @@ def extraer_marca(nombre):
             return marca.title() 
     
     return 'Otra marca'
-
+    
 # ============================================ #
 #                                              #
 #    FUNCIONES PARA GENERAR IDs ÚNICOS         #
@@ -70,6 +70,12 @@ def generar_id_consistente(nombre):
     
     # Tomar los primeros 12 caracteres del hash para un ID legible
     return hash_hex[:12]
+
+# ============================================ #
+#                                              #
+#    aqui tmb se crean los IDS                 #
+#                                              #
+# ============================================ #
 
 def generar_id_descriptivo(nombre, marca=""):
     """
@@ -508,73 +514,192 @@ def extraer_precio_producto(contenedor_producto):
         
     except Exception as e:
         return f"Error: {e}"
+
+# ============================================ #
+#                                              #
+#    NUEVA FUNCIÓN: EXTRAER LINK PRODUCTO      #
+#                                              #
+# ============================================ #
+
+def extraer_link_producto(contenedor_producto, driver, profundidad=0, max_profundidad=3):
+    """
+    Extrae el enlace del producto usando múltiples estrategias con esperas.
+    Si no encuentra enlace en el contenedor actual, sube recursivamente en el DOM.
+    """
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.webdriver.common.by import By
     
+    if profundidad > max_profundidad:
+        return "No disponible"
+    
+    # Estrategia 0: Esperar a que el contenedor esté presente y visible
+    try:
+        WebDriverWait(driver, 2).until(
+            lambda d: contenedor_producto.is_displayed()
+        )
+    except Exception:
+        pass  # Continuar incluso si la espera falla
+    
+    # Estrategia 1: Buscar un enlace específico para el producto (selector exacto)
+    try:
+        enlace_element = WebDriverWait(contenedor_producto, 2).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'a[data-test="mms-router-link-product-list-item-link_mp"]'))
+        )
+        href = enlace_element.get_attribute('href')
+        if href and 'mediamarkt' in href:
+            resultado = href if href.startswith('http') else f"https://www.mediamarkt.es{href}"
+            print(f"      ✅ Enlace encontrado (Estrategia 1 - Selector exacto)")
+            return resultado
+    except Exception:
+        pass
+    
+    # Estrategia 2: Lista de selectores CSS alternativos (más genéricos)
+    posibles_selectores = [
+        ('a[href*="/p/"]', "Href /p/"),
+        ('a[href*="/product/"]', "Href /product/"),
+        ('a[data-test*="product-list-item-link"]', "data-test genérico"),
+        ('a[data-test*="product-link"]', "data-test product-link"),
+        ('a.sc-8a3a8cd8-2', "Clase específica del enlace"),
+        ('a[class*="product-link"]', "Clase que contiene product-link"),
+        ('a', "Cualquier enlace"),
+    ]
+    
+    for selector, descripcion in posibles_selectores:
+        try:
+            elementos = contenedor_producto.find_elements(By.CSS_SELECTOR, selector)
+            for elemento in elementos:
+                href = elemento.get_attribute("href")
+                if not href:
+                    continue
+                
+                # Filtrar enlaces que no sean de productos o sean de tracking
+                if "mediamarkt" not in href:
+                    continue
+                
+                # Verificar patrones típicos de enlaces de producto
+                if "/p/" not in href and "/product/" not in href:
+                    continue
+                
+                # Convertir a URL absoluta si es necesario
+                if not href.startswith("http"):
+                    href = "https://www.mediamarkt.es" + href
+                
+                print(f"      ✅ Enlace encontrado (Estrategia 2 - {descripcion})")
+                return href
+        except Exception:
+            continue
+    
+    # Estrategia 3: Buscar en elementos que contengan el texto del título del producto
+    try:
+        # Primero obtener el nombre del producto si está disponible
+        nombre_element = contenedor_producto.find_elements(By.CSS_SELECTOR, 'p[data-test="product-title"]')
+        if nombre_element:
+            nombre_producto = nombre_element[0].text
+            # Buscar enlaces que contengan palabras clave del nombre del producto
+            enlaces = contenedor_producto.find_elements(By.TAG_NAME, "a")
+            for enlace in enlaces:
+                href = enlace.get_attribute('href')
+                if href and 'mediamarkt' in href and any(keyword in href.lower() for keyword in ['p-', 'product-', '/p/', '/product/']):
+                    resultado = href if href.startswith('http') else f"https://www.mediamarkt.es{href}"
+                    print(f"      ✅ Enlace encontrado (Estrategia 3 - Por título del producto)")
+                    return resultado
+    except Exception:
+        pass
+    
+    # Estrategia 4: Subir recursivamente en el DOM (como último recurso)
+    if profundidad < max_profundidad:
+        try:
+            padre = contenedor_producto.find_element(By.XPATH, "./..")
+            print(f"      🔍 Subiendo al elemento padre (profundidad: {profundidad+1})")
+            return extraer_link_producto(padre, driver, profundidad+1, max_profundidad)
+        except Exception as e:
+            print(f"      ⚠️  No se pudo subir al elemento padre: {e}")
+    
+    # Estrategia 5: Verificar si el contenedor ES un enlace
+    try:
+        tag_name = contenedor_producto.tag_name.lower()
+        if tag_name == 'a':
+            href = contenedor_producto.get_attribute('href')
+            if href and 'mediamarkt' in href:
+                resultado = href if href.startswith('http') else f"https://www.mediamarkt.es{href}"
+                print(f"      ✅ Enlace encontrado (Estrategia 5 - El contenedor es un enlace)")
+                return resultado
+    except Exception:
+        pass
+    
+    # Si ninguna estrategia funcionó
+    print(f"      ⚠️  No se pudo extraer enlace (profundidad: {profundidad})")
+    return "No disponible"
 
 # ============================================ #
-#    Esta función genera IDs consistentes      #
-#     No estaba antes                          #
-# ============================================ #
-
-def generar_id_consistente(nombre):
-    """
-    Genera un ID único y consistente basado en el nombre del producto
-    El mismo producto siempre tendrá el mismo ID
-    """
-    # Crear un hash MD5 del nombre (normalizado a minúsculas y sin espacios extra)
-    nombre_normalizado = str(nombre).lower().strip()
-    hash_obj = hashlib.md5(nombre_normalizado.encode('utf-8'))
-    return hash_obj.hexdigest()[:12]  # Tomamos los primeros 12 caracteres del hash
-
-# ============================================ #
-#    cambio esta función que daba error antes  #
+#                                              #
+#    MODIFICAR FUNCIÓN EXTRACCIÓN PRODUCTOS    #
 #                                              #
 # ============================================ #
 
 def extraer_productos_pagina(driver):
     """
     Extrae los productos de una sola página
+    Versión robusta:
+    - El enlace se extrae desde el <a> ancestro del título
+    - El contenedor se ancla a un bloque con precio
+    - No sube el DOM a ciegas
     """
+
     productos_pagina = []
-    
+
     try:
-        # Buscar todos los títulos de productos en la página actual
-        productos_titulos = driver.find_elements(By.CSS_SELECTOR, 'p[data-test="product-title"]')
-        
-        print(f"   🔍 Encontrados {len(productos_titulos)} productos en la página")
-        
-        # Para cada título, encontrar su contenedor y extraer información
-        for i, titulo in enumerate(productos_titulos):
+        titulos = driver.find_elements(By.CSS_SELECTOR, 'p[data-test="product-title"]')
+        print(f"   🔍 Encontrados {len(titulos)} productos en la página")
+
+        for i, titulo in enumerate(titulos, start=1):
             try:
-                # Encontrar el contenedor del producto
-                contenedor = titulo
-                for _ in range(5):
-                    contenedor = contenedor.find_element(By.XPATH, "./..")
-                    try:
-                        precios = contenedor.find_elements(By.XPATH, ".//*[contains(text(), '€')]")
-                        if precios:
-                            break
-                    except:
-                        continue
-                
-                # Extraer nombre y precio
-                nombre = titulo.text
+                nombre = titulo.text.strip()
+
+                # 🟢 1. ENLACE — anclado al <a> ancestro del título
+                try:
+                    enlace_elem = titulo.find_element(By.XPATH, ".//ancestor::a[1]")
+                    enlace = enlace_elem.get_attribute("href")
+
+                    if enlace and not enlace.startswith("http"):
+                        enlace = "https://www.mediamarkt.es" + enlace
+
+                except Exception:
+                    enlace = "No disponible"
+
+                # 🟢 2. CONTENEDOR — bloque que contiene precio
+                try:
+                    contenedor = titulo.find_element(
+                        By.XPATH,
+                        ".//ancestor::div[.//text()[contains(., '€')]]"
+                    )
+                except Exception:
+                    contenedor = titulo
+
+                # 🟢 3. PRECIO
                 precio = extraer_precio_producto(contenedor)
-                
-                # CAMBIADO: Generar ID consistente basado en el nombre
+
+                # 🟢 4. MARCA
+                marca = extraer_marca_ebook(nombre)
+
+                # 🟢 5. ID CONSISTENTE
                 producto_id = generar_id_consistente(nombre)
-                
+
                 productos_pagina.append({
                     'id': producto_id,
                     'nombre': nombre,
-                    'precio': precio
+                    'precio': precio,
+                    'marca': marca,
+                    'enlace': enlace
                 })
-                
+
             except Exception as e:
-                print(f"   ❌ Error extrayendo producto {i+1} de la página: {e}")
+                print(f"   ❌ Error en producto {i}: {e}")
                 continue
-                
+
         return productos_pagina
-        
+
     except Exception as e:
         print(f"❌ Error extrayendo productos de la página: {e}")
         return productos_pagina
@@ -659,16 +784,18 @@ def extraer_productos(driver):
     except Exception as e:
         print(f"❌ Error extrayendo productos: {e}")
         return productos_data
-    
 
-# ============================================ # 
-#       Hubo cambio aqui tmb daba error        #
-# ============================================ #   
+# ============================================ #
+#                                              #
+#      no solo guarda, si no que, es para      #
+#                 crear los IDS                #
+#                                              #
+# ============================================ #
 
 def guardar_en_dataframe(productos_data):
     """
     Convierte la lista de productos en un DataFrame y lo guarda en CSV
-    EXACTLY like old notebook
+    EXACTLY like old notebook - MODIFICADO para incluir enlaces
     """
     if not productos_data:
         print("No hay datos para guardar")
@@ -678,13 +805,6 @@ def guardar_en_dataframe(productos_data):
     
     fecha_extraccion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     df['fecha_extraccion'] = fecha_extraccion
-    
-    # CORRECCIÓN: Agregar columna de marca ANTES de limpiar precios
-    print("\n" + "="*60)
-    print("EXTRACCIÓN DE MARCAS")
-    print("="*60)
-    df['marca'] = df['nombre'].apply(extraer_marca)
-    print(f"🏷️  Total de marcas extraídas: {df['marca'].nunique()}")
     
     # Verificar si ya tenemos IDs generados
     if 'id' not in df.columns:
@@ -699,11 +819,11 @@ def guardar_en_dataframe(productos_data):
         for i, (nombre, producto_id) in enumerate(zip(df['nombre'].head(3), df['id'].head(3))):
             print(f"   {i+1}. {nombre[:30]}... → ID: {producto_id}")
     
-    # Limpiar columna precio después de agregar marca
+    # Limpiar columna precio
     df = limpiar_columna_precio(df)
     
-    # ORDEN CORREGIDO: Incluir la columna 'id' en el orden
-    column_order = ['fecha_extraccion', 'id', 'numero', 'nombre', 'marca', 'precio']
+    # Orden de columnas con ID incluido - AÑADIDO 'enlace'
+    column_order = ['fecha_extraccion', 'id', 'numero', 'nombre', 'marca', 'precio', 'enlace']
     if 'precio_original' in df.columns:
         column_order.append('precio_original')
     
@@ -718,11 +838,11 @@ def guardar_en_dataframe(productos_data):
     
     os.makedirs("scraping_results", exist_ok=True)
 
-# ============================================ # 
-#      Cambiar url                             #
-# ============================================ #   
-
-    nombre_archivo = f"scraping_results/smartphones_mediamarkt_completo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+# ============================================ #  
+#   Hay que cambiar el nombre del archivo      #
+# ============================================ #
+    
+    nombre_archivo = f"scraping_results/smartphones_mediamarkt_completo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv" #cambiar aqui el nombre del archivo que se descarga.
     file_path = nombre_archivo
     df.to_csv(file_path, index=False, encoding='utf-8')
     
@@ -763,6 +883,17 @@ def guardar_en_dataframe(productos_data):
         print(f"📉 Precio mínimo: {df['precio'].min():.2f}€")
         print(f"📈 Precio máximo: {df['precio'].max():.2f}€")
     
+    # Estadísticas de enlaces
+    enlaces_validos = df[df['enlace'] != 'No disponible']['enlace'].count()
+    print(f"\n🔗 Enlaces extraídos: {enlaces_validos} de {len(df)} productos")
+    
+    # Mostrar algunos enlaces de ejemplo
+    if enlaces_validos > 0:
+        print(f"📋 Ejemplos de enlaces extraídos:")
+        for i, row in df[df['enlace'] != 'No disponible'].head(3).iterrows():
+            print(f"   {row['nombre'][:30]}...")
+            print(f"     → {row['enlace']}")
+    
     print("\n📋 Primeras 5 filas del DataFrame:")
     print(df.head())
     
@@ -777,7 +908,7 @@ def guardar_en_dataframe(productos_data):
 def main():
     """Función principal"""
     print("="*60)
-    print("SCRAPING DE Smartphones - MEDIAMARKT")
+    print("SCRAPING DE EBOOKS - MEDIAMARKT")
     print("="*60)
     print(f"Fecha y hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
@@ -787,7 +918,7 @@ def main():
 #   Hay que cambiar la url                     #
 # ============================================ #   
     try:
-        url = "https://www.mediamarkt.es/es/category/smartphones-263.html?sort=currentprice+desc" #cambio de url!!!!
+        url = "https://www.mediamarkt.es/es/category/ebooks-249.html?sort=currentprice+desc" #cambio de url!!!!
         
         print(f"\n🌐 Accediendo a: {url}")
         
@@ -824,6 +955,7 @@ def main():
         print(f"🔑 IDs únicos generados: {df['id'].nunique()}")
         print(f"🏷️  Marcas diferentes encontradas: {df['marca'].nunique()}")
         print(f"💰 Precios válidos obtenidos: {df['precio'].notna().sum()}")
+        print(f"🔗 Enlaces extraídos: {df[df['enlace'] != 'No disponible']['enlace'].count()}")
         print(f"📁 Archivo local generado: {archivo_csv}")
         print(f"💾 Google Drive: Datos añadidos al archivo histórico")
         
