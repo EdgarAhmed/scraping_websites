@@ -66,7 +66,7 @@ jobs:
         echo "🔄 Configuring Google Drive..."
         
         # Check if Google Drive credentials are available
-        if [ -z "$GOOGLE_CREDENTIALS_JSON" ]; then
+        if [ -z "$GOOGLE_CREDENTIALS_JSON_2" ]; then
           echo "⚠️  WARNING: No Google Drive credentials configured"
           echo "ℹ️   The script will run but won't update Google Drive"
         else
