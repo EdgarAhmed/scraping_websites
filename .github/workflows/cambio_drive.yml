@@ -1,3 +1,4 @@
+
 name: Prueba_cambio_drive
 
 on:
@@ -22,26 +23,17 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y wget unzip gnupg
-
-        # Install Chrome
         wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome-keyring.gpg
         echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
         sudo apt-get update
         sudo apt-get install -y google-chrome-stable
-
         google-chrome --version
 
     - name: Install Python dependencies
       run: |
         pip install --upgrade pip
-
-        # Main dependencies
         pip install selenium pandas webdriver-manager lxml
-
-        # Google Drive API dependencies
         pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
-
-        # If requirements.txt exists, install it too
         if [ -f "requirements.txt" ]; then
           pip install -r requirements.txt
         fi
@@ -62,7 +54,6 @@ jobs:
         echo "🚀 Starting MediaMarkt ebooks scraping..."
         echo "🔄 Configuring Google Drive..."
 
-        # Check if Google Drive credentials are available
         if [ -z "$GOOGLE_CREDENTIALS_JSON_2" ]; then
           echo "⚠️  WARNING: No Google Drive credentials configured"
           echo "ℹ️   The script will run but won't update Google Drive"
@@ -70,25 +61,19 @@ jobs:
           echo "✅ Google Drive credentials configured"
         fi
 
-        # Create directory for results
         mkdir -p scraping_results
 
-        # Check for the script in scrips_py directory
         if [ -f "scrips_py/00_cambio_drive.py" ]; then
           echo "✅ Found script at: scrips_py/00_cambio_drive.py"
           SCRIPT_PATH="scrips_py/00_cambio_drive.py"
         else
           echo "❌ Script not found in scrips_py directory."
-          echo "🔍 Looking for Python files in scrips_py..."
           find scrips_py -name "*.py" 2>/dev/null || echo "No Python files found in scrips_py"
           exit 1
         fi
 
-        # Execute the script
         echo "🚀 Executing script: $SCRIPT_PATH"
-        python $SCRIPT_PATH
-
-        echo "✅ Script executed. Checking results..."
+        python3 $SCRIPT_PATH
 
         echo "📄 Generated files in scraping_results/:"
         ls -la scraping_results/ 2>/dev/null || echo "No results in scraping_results/"
@@ -111,9 +96,10 @@ jobs:
       run: |
         echo "❌ MediaMarkt scraping has failed"
         echo "Check the logs for more details"
-        echo ""
         echo "Possible issues:"
         echo "1. Script not found in scrips_py directory"
         echo "2. Google Drive credentials missing or incorrect"
         echo "3. Website structure changed"
         echo "4. Chrome installation failed"
+
+
