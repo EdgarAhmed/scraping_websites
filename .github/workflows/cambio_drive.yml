@@ -69,7 +69,7 @@ jobs:
         if [ -z "$GOOGLE_CREDENTIALS_JSON" ]; then
           echo "⚠️  WARNING: No Google Drive credentials configured"
           echo "ℹ️   The script will run but won't update Google Drive"
-        else:
+        else
           echo "✅ Google Drive credentials configured"
         fi
         
@@ -78,9 +78,6 @@ jobs:
         
         # Check for the script in scrips_py directory
         if [ -f "scrips_py/00_cambio_drive.py" ]; then
-          echo "✅ Found script at: scrips_py/00_cambio_drive.py"
-          SCRIPT_PATH="scrips_py/00_cambio_drive.py"
-        elif [ -f "scrips_py/00_cambio_drive.py" ]; then
           echo "✅ Found script at: scrips_py/00_cambio_drive.py"
           SCRIPT_PATH="scrips_py/00_cambio_drive.py"
         else
