@@ -2,7 +2,7 @@ name: Prueba_cambio_drive
 
 on:
   schedule:
-    - cron: '0 2 * * *'
+    - cron: '0 4 * * *'
   workflow_dispatch:
 
 jobs:
@@ -66,7 +66,7 @@ jobs:
         echo "🔄 Configuring Google Drive..."
         
         # Check if Google Drive credentials are available
-        if [ -z "$GOOGLE_CREDENTIALS_JSON_2" ]; then
+        if [ -z "$GOOGLE_CREDENTIALS_JSON" ]; then
           echo "⚠️  WARNING: No Google Drive credentials configured"
           echo "ℹ️   The script will run but won't update Google Drive"
         else:
@@ -77,12 +77,12 @@ jobs:
         mkdir -p scraping_results
         
         # Check for the script in scrips_py directory
-        if [ -f "scrips_py/00_cambio_drive.pyscrip_ebooks.py" ]; then
-          echo "✅ Found script at: scrips_py/00_cambio_drive.pyscrip_ebooks.py"
-          SCRIPT_PATH="scrips_py/00_cambio_drive.pyscrip_ebooks.py"
-        elif [ -f "scrips_py/scrip_ebooks.py" ]; then
-          echo "✅ Found script at: scrips_py/scrip_ebooks.py"
-          SCRIPT_PATH="scrips_py/scrip_ebooks.py"
+        if [ -f "scrips_py/00_cambio_drive.py" ]; then
+          echo "✅ Found script at: scrips_py/00_cambio_drive.py"
+          SCRIPT_PATH="scrips_py/00_cambio_drive.py"
+        elif [ -f "scrips_py/00_cambio_drive.py" ]; then
+          echo "✅ Found script at: scrips_py/00_cambio_drive.py"
+          SCRIPT_PATH="scrips_py/00_cambio_drive.py"
         else
           echo "❌ Script not found in scrips_py directory."
           echo "🔍 Looking for Python files in scrips_py..."
