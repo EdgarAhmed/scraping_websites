@@ -367,7 +367,7 @@ def descargar_archivo_drive(service, file_id):
 def subir_archivo_drive(service, nombre_archivo, contenido_csv, folder_id, file_id=None):
     """
     Sube un archivo CSV a Google Drive.
-    Si file_id se proporciona, actualiza el archivo existente.
+    Si file_id se proporciona, liza el archivo existente.
     Si no, crea un nuevo archivo.
     """
     try:
@@ -382,7 +382,7 @@ def subir_archivo_drive(service, nombre_archivo, contenido_csv, folder_id, file_
             resumable=False
         )
         
-        # Si hay un file_id, actualizar el archivo existente
+        # Si hay un file_id, lizar el archivo existente
         if file_id:
             print(f"📤 Actualizando archivo existente en Drive (ID: {file_id})")
             file = service.files().update(
@@ -420,6 +420,22 @@ def actualizar_csv_drive(
     folder_id="1cSW4uOfw4x61a-R6TAOyn6ejEHNiyX0v",
     nombre_archivo="ebooks_mediamarkt.csv"
 ):
+    import io
+    import pandas as pd
+
+    def leer_csv_seguro(contenido):
+        # Eliminar bytes NUL que rompen pandas
+        contenido = contenido.replace('\x00', '')
+        try:
+            return pd.read_csv(
+                io.StringIO(contenido),
+                sep=None,
+                engine="python",
+                on_bad_lines="skip"
+            )
+        except Exception:
+            print("⚠️ CSV histórico corrupto, se ignora y se recrea")
+            return None
 
     print("\n" + "="*60)
     print("ACTUALIZANDO GOOGLE DRIVE – HISTÓRICO REAL (APPEND)")
@@ -440,26 +456,22 @@ def actualizar_csv_drive(
             print("❌ No se pudo descargar el histórico")
             return False
 
-        df_existente = pd.read_csv(
-            io.StringIO(contenido),
-            sep=None,          # 👈 autodetecta separador
-            engine="python",   # 👈 parser tolerante
-            on_bad_lines="skip"
-        )
-        print(f"📊 Filas históricas: {len(df_existente)}")
+        df_existente = leer_csv_seguro(contenido)
 
-        # CONCAT SEGURO (NO REORDENA, NO BORRA)
-        df_combinado = pd.concat(
-            [df_existente, df_nuevo],
-            ignore_index=True,
-            sort=False
-        )
-
+        if df_existente is None or df_existente.empty:
+            print("🆕 Histórico inválido → usando solo datos nuevos")
+            df_combinado = df_nuevo.copy()
+        else:
+            print(f"📊 Filas históricas: {len(df_existente)}")
+            df_combinado = pd.concat(
+                [df_existente, df_nuevo],
+                ignore_index=True,
+                sort=False
+            )
     else:
         print("🆕 No existe histórico, creando nuevo")
         df_combinado = df_nuevo.copy()
 
-    # Eliminar SOLO duplicados exactos
     filas_antes = len(df_combinado)
     df_combinado = df_combinado.drop_duplicates()
     filas_despues = len(df_combinado)
