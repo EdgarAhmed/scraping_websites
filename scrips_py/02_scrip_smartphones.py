@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script de scraping para Moviles de MediaMarkt con actualización en Google Drive
+Script de scraping para Smartphones de MediaMarkt con actualización en Google Drive
 EXACTLY matches the old notebook scraping logic
 """
 
@@ -21,6 +21,12 @@ import sys
 import io
 import json
 import hashlib  # Importar hashlib para generar IDs
+
+# ============================================ #
+#                                              #
+#       CONFIGURACIÓN DE MARCAS DE Movil       #
+#                                              #
+# ============================================ #
 
 # ============================================ #
 #                                              #
@@ -898,7 +904,7 @@ def guardar_en_dataframe(productos_data):
 def main():
     """Función principal"""
     print("="*60)
-    print("SCRAPING DE EBOOKS - MEDIAMARKT")
+    print("SCRAPING DE Monitores - MEDIAMARKT")
     print("="*60)
     print(f"Fecha y hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
