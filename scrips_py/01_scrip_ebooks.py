@@ -403,11 +403,14 @@ def subir_archivo_drive(service, nombre_archivo, contenido_csv, folder_id, file_
         traceback.print_exc()
         return False
 
+# Folder de Google Drive donde se guarda el histórico
+# Antes: "17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7"
 def actualizar_csv_drive(
     df_nuevo,
-    folder_id="1cSW4uOfw4x61a-R6TAOyn6ejEHNiyX0v", #"17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7", #cambio en caso de que quiera, que querré...
-    nombre_archivo="ebooks_mediamarkt.csv" #cambio del nombre del archivo. 
+    folder_id="1cSW4uOfw4x61a-R6TAOyn6ejEHNiyX0v",
+    nombre_archivo="ebooks_mediamarkt.csv"
 ):
+
     print("\n" + "="*60)
     print("ACTUALIZANDO GOOGLE DRIVE – HISTÓRICO REAL (APPEND)")
     print("="*60)
