@@ -44,7 +44,7 @@ marcas_televisores = [
 ]
 
 # Función para extraer la marca del nombre del televisor
-def extraer_marca(nombre):
+def a(nombre):
     if pd.isna(nombre):
         return 'Desconocido'
     
@@ -696,7 +696,7 @@ def extraer_productos_pagina(driver):
                 precio = extraer_precio_producto(contenedor)
 
                 # 🟢 4. MARCA
-                marca = extraer_marca_ebook(nombre)
+                marca = extraer_marca(nombre)
 
                 # 🟢 5. ID CONSISTENTE
                 producto_id = generar_id_consistente(nombre)
@@ -923,7 +923,7 @@ def guardar_en_dataframe(productos_data):
 def main():
     """Función principal"""
     print("="*60)
-    print("SCRAPING DE EBOOKS - MEDIAMARKT")
+    print("SCRAPING DE TVs - MEDIAMARKT")
     print("="*60)
     print(f"Fecha y hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
