@@ -304,6 +304,10 @@ def buscar_archivo_drive(service, nombre_archivo, folder_id):
         print(f"❌ Error buscando archivo en Drive: {e}")
         return None
 
+# ============================================ #
+#  A ver si deja de fallar el encoding         #
+# ============================================ #
+
 def descargar_archivo_drive(service, file_id):
     """
     Descarga un archivo de Google Drive.
@@ -341,9 +345,15 @@ def descargar_archivo_drive(service, file_id):
         done = False
         while not done:
             status, done = downloader.next_chunk()
-
+        
         fh.seek(0)
-        return fh.getvalue().decode("utf-8")
+        contenido_bytes = fh.getvalue()
+
+        try:
+            return contenido_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            print("⚠️ UTF-8 falló, intentando latin-1")
+            return contenido_bytes.decode("latin-1")
 
     except Exception as e:
         print(f"❌ Error descargando archivo de Drive: {e}")
