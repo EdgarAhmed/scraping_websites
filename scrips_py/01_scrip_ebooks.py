@@ -440,7 +440,12 @@ def actualizar_csv_drive(
             print("❌ No se pudo descargar el histórico")
             return False
 
-        df_existente = pd.read_csv(io.StringIO(contenido))
+        df_existente = pd.read_csv(
+            io.StringIO(contenido),
+            sep=None,          # 👈 autodetecta separador
+            engine="python",   # 👈 parser tolerante
+            on_bad_lines="skip"
+        )
         print(f"📊 Filas históricas: {len(df_existente)}")
 
         # CONCAT SEGURO (NO REORDENA, NO BORRA)
