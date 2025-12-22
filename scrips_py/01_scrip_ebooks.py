@@ -418,13 +418,13 @@ def subir_archivo_drive(service, nombre_archivo, contenido_csv, folder_id, file_
 def actualizar_csv_drive(
     df_nuevo,
     folder_id="1cSW4uOfw4x61a-R6TAOyn6ejEHNiyX0v",
-    nombre_archivo="ebooks_mediamarkt.csv"
+    nombre_archivo_base="ebooks_mediamarkt.csv"
 ):
     import io
     import pandas as pd
+    from datetime import datetime
 
     def leer_csv_seguro(contenido):
-        # Eliminar bytes NUL que rompen pandas
         contenido = contenido.replace('\x00', '')
         try:
             return pd.read_csv(
@@ -434,62 +434,44 @@ def actualizar_csv_drive(
                 on_bad_lines="skip"
             )
         except Exception:
-            print("⚠️ CSV histórico corrupto, se ignora y se recrea")
             return None
-
-    print("\n" + "="*60)
-    print("ACTUALIZANDO GOOGLE DRIVE – HISTÓRICO REAL (APPEND)")
-    print("="*60)
 
     service = configurar_google_drive()
     if not service:
-        print("⚠️ Google Drive no disponible")
         return False
 
-    archivo_existente = buscar_archivo_drive(service, nombre_archivo, folder_id)
+    archivo_existente = buscar_archivo_drive(service, nombre_archivo_base, folder_id)
 
     if archivo_existente:
-        print("📁 Archivo histórico encontrado")
-
         contenido = descargar_archivo_drive(service, archivo_existente["id"])
-        if not contenido:
-            print("❌ No se pudo descargar el histórico")
-            return False
+        df_existente = leer_csv_seguro(contenido) if contenido else None
 
-        df_existente = leer_csv_seguro(contenido)
-
-        if df_existente is None or df_existente.empty:
-            print("🆕 Histórico inválido → usando solo datos nuevos")
-            df_combinado = df_nuevo.copy()
-        else:
-            print(f"📊 Filas históricas: {len(df_existente)}")
+        if df_existente is not None and not df_existente.empty:
             df_combinado = pd.concat(
                 [df_existente, df_nuevo],
                 ignore_index=True,
                 sort=False
             )
+        else:
+            df_combinado = df_nuevo.copy()
     else:
-        print("🆕 No existe histórico, creando nuevo")
         df_combinado = df_nuevo.copy()
 
-    filas_antes = len(df_combinado)
     df_combinado = df_combinado.drop_duplicates()
-    filas_despues = len(df_combinado)
-
-    print(f"🧹 Duplicados exactos eliminados: {filas_antes - filas_despues}")
-    print(f"📊 Total final en histórico: {len(df_combinado)}")
 
     csv_contenido = df_combinado.to_csv(index=False, encoding="utf-8")
 
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    nombre_archivo_versionado = f"ebooks_mediamarkt_{timestamp}.csv"
+
     subir_archivo_drive(
-        service,
-        nombre_archivo,
-        csv_contenido,
-        folder_id,
-        archivo_existente["id"] if archivo_existente else None
+        service=service,
+        nombre_archivo=nombre_archivo_versionado,
+        contenido_csv=csv_contenido,
+        folder_id=folder_id,
+        file_id=None
     )
 
-    print("✅ Histórico actualizado correctamente en Google Drive")
     return True
 
 # ============================================ #
