@@ -130,12 +130,6 @@ def generar_id_consistente(nombre):
     # Tomar los primeros 12 caracteres del hash para un ID legible
     return hash_hex[:12]
 
-# ============================================ #
-#                                              #
-#    aqui tmb se crean los IDS                 #
-#                                              #
-# ============================================ #
-
 def generar_id_descriptivo(nombre, marca=""):
     """
     Genera un ID más descriptivo combinando marca y hash
@@ -239,14 +233,6 @@ def limpiar_columna_precio(df):
 #                                              #
 # ============================================ #
 
-# ============================================ #
-#                                              #
-#       las funciones de aquí, hay veces que   #
-#   han dado errores, para tener en cuenta en  #
-#                       el futuro              #
-#                                              #
-# ============================================ #
-
 def configurar_google_drive():
     """
     Configura y autentica con Google Drive usando credenciales de servicio
@@ -254,7 +240,6 @@ def configurar_google_drive():
     try:
         from google.oauth2 import service_account
         from googleapiclient.discovery import build
-        from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
         
         # Verificar si hay credenciales disponibles
         credenciales_json = (
@@ -303,10 +288,6 @@ def buscar_archivo_drive(service, nombre_archivo, folder_id):
     except Exception as e:
         print(f"❌ Error buscando archivo en Drive: {e}")
         return None
-
-# ============================================ #
-#  A ver si deja de fallar el encoding         #
-# ============================================ #
 
 def descargar_archivo_drive(service, file_id):
     """
@@ -359,15 +340,10 @@ def descargar_archivo_drive(service, file_id):
         print(f"❌ Error descargando archivo de Drive: {e}")
         return None
 
-
-# ============================================ #
-#  Tener ojo en estas partes que puede fallar  #
-# ============================================ #
-
 def subir_archivo_drive(service, nombre_archivo, contenido_csv, folder_id, file_id=None):
     """
     Sube un archivo CSV a Google Drive.
-    Si file_id se proporciona, liza el archivo existente.
+    Si file_id se proporciona, actualiza el archivo existente.
     Si no, crea un nuevo archivo.
     """
     try:
@@ -382,7 +358,7 @@ def subir_archivo_drive(service, nombre_archivo, contenido_csv, folder_id, file_
             resumable=False
         )
         
-        # Si hay un file_id, lizar el archivo existente
+        # Si hay un file_id, actualizar el archivo existente
         if file_id:
             print(f"📤 Actualizando archivo existente en Drive (ID: {file_id})")
             file = service.files().update(
@@ -414,17 +390,16 @@ def subir_archivo_drive(service, nombre_archivo, contenido_csv, folder_id, file_
         return False
 
 # Folder de Google Drive donde se guarda el histórico
-# Antes: "17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7"
 def actualizar_csv_drive(
     df_nuevo,
     folder_id="1cSW4uOfw4x61a-R6TAOyn6ejEHNiyX0v",
-    nombre_archivo_base="ebooks_mediamarkt.csv"
+    nombre_archivo="ebooks_mediamarkt.csv"
 ):
     import io
     import pandas as pd
-    from datetime import datetime
 
     def leer_csv_seguro(contenido):
+        # Eliminar bytes NUL que rompen pandas
         contenido = contenido.replace('\x00', '')
         try:
             return pd.read_csv(
@@ -434,45 +409,79 @@ def actualizar_csv_drive(
                 on_bad_lines="skip"
             )
         except Exception:
+            print("⚠️ CSV histórico corrupto, se ignora y se recrea")
             return None
+
+    print("\n" + "="*60)
+    print("ACTUALIZANDO GOOGLE DRIVE – HISTÓRICO REAL (APPEND)")
+    print("="*60)
 
     service = configurar_google_drive()
     if not service:
+        print("⚠️ Google Drive no disponible")
         return False
 
-    archivo_existente = buscar_archivo_drive(service, nombre_archivo_base, folder_id)
+    archivo_existente = buscar_archivo_drive(service, nombre_archivo, folder_id)
 
     if archivo_existente:
-        contenido = descargar_archivo_drive(service, archivo_existente["id"])
-        df_existente = leer_csv_seguro(contenido) if contenido else None
+        print("📁 Archivo histórico encontrado")
 
-        if df_existente is not None and not df_existente.empty:
+        contenido = descargar_archivo_drive(service, archivo_existente["id"])
+        if not contenido:
+            print("❌ No se pudo descargar el histórico")
+            return False
+
+        df_existente = leer_csv_seguro(contenido)
+
+        if df_existente is None or df_existente.empty:
+            print("🆕 Histórico inválido → usando solo datos nuevos")
+            df_combinado = df_nuevo.copy()
+        else:
+            print(f"📊 Filas históricas: {len(df_existente)}")
             df_combinado = pd.concat(
                 [df_existente, df_nuevo],
                 ignore_index=True,
                 sort=False
             )
-        else:
-            df_combinado = df_nuevo.copy()
     else:
+        print("🆕 No existe histórico, creando nuevo")
         df_combinado = df_nuevo.copy()
 
+    filas_antes = len(df_combinado)
     df_combinado = df_combinado.drop_duplicates()
+    filas_despues = len(df_combinado)
+
+    print(f"🧹 Duplicados exactos eliminados: {filas_antes - filas_despues}")
+    print(f"📊 Total final en histórico: {len(df_combinado)}")
 
     csv_contenido = df_combinado.to_csv(index=False, encoding="utf-8")
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    nombre_archivo_versionado = f"ebooks_mediamarkt_{timestamp}.csv"
+    # CORRECCIÓN APLICADA: Siempre usar el ID del archivo existente para actualizarlo
+    if archivo_existente:
+        # Usar el ID del archivo existente para ACTUALIZARLO (no crear uno nuevo)
+        subir_exitoso = subir_archivo_drive(
+            service,
+            nombre_archivo,
+            csv_contenido,
+            folder_id,
+            archivo_existente["id"]  # Esto hace que se actualice el mismo archivo
+        )
+    else:
+        # Si no existe, crear uno nuevo
+        subir_exitoso = subir_archivo_drive(
+            service,
+            nombre_archivo,
+            csv_contenido,
+            folder_id,
+            None  # Sin ID para crear nuevo archivo
+        )
 
-    subir_archivo_drive(
-        service=service,
-        nombre_archivo=nombre_archivo_versionado,
-        contenido_csv=csv_contenido,
-        folder_id=folder_id,
-        file_id=None
-    )
-
-    return True
+    if subir_exitoso:
+        print("✅ Histórico actualizado correctamente en Google Drive")
+        return True
+    else:
+        print("❌ Error subiendo el archivo a Drive")
+        return False
 
 # ============================================ #
 #                                              #
@@ -521,12 +530,6 @@ def mediamark_mob_(url):
     except Exception as e:
         print(f"❌ Error inicializando Chrome: {e}")
         raise
-
-# ============================================ #
-#                                              #
-#       OBTENER PRECIO PRODUCTOS               #
-#                                              #
-# ============================================ #
 
 def obtener_total_articulos(driver):
     """
@@ -587,12 +590,6 @@ def extraer_precio_producto(contenedor_producto):
         
     except Exception as e:
         return f"Error: {e}"
-
-# ============================================ #
-#                                              #
-#    NUEVA FUNCIÓN: EXTRAER LINK PRODUCTO      #
-#                                              #
-# ============================================ #
 
 def extraer_link_producto(contenedor_producto, driver, profundidad=0, max_profundidad=3):
     """
@@ -705,12 +702,6 @@ def extraer_link_producto(contenedor_producto, driver, profundidad=0, max_profun
     print(f"      ⚠️  No se pudo extraer enlace (profundidad: {profundidad})")
     return "No disponible"
 
-# ============================================ #
-#                                              #
-#    MODIFICAR FUNCIÓN EXTRACCIÓN PRODUCTOS    #
-#                                              #
-# ============================================ #
-
 def extraer_productos_pagina(driver):
     """
     Extrae los productos de una sola página
@@ -777,10 +768,6 @@ def extraer_productos_pagina(driver):
         print(f"❌ Error extrayendo productos de la página: {e}")
         return productos_pagina
     
-# ============================================ # 
-#       Cambio de URL más abajo                #
-# ============================================ #
-
 def extraer_productos(driver):
     """
     Extrae todos los productos EXACTLY like old notebook
@@ -811,7 +798,7 @@ def extraer_productos(driver):
                 try:
                     print(f"📖 Página {pagina}/30 - Criterio: {criterio}")
                     
-                    url_pagina = f"https://www.mediamarkt.es/es/category/ebooks-249.html?sort={criterio}&page={pagina}" #cambio de url!!!!
+                    url_pagina = f"https://www.mediamarkt.es/es/category/ebooks-249.html?sort={criterio}&page={pagina}"
                     
                     driver.get(url_pagina)
                     time.sleep(2)
@@ -857,13 +844,6 @@ def extraer_productos(driver):
     except Exception as e:
         print(f"❌ Error extrayendo productos: {e}")
         return productos_data
-
-# ============================================ #
-#                                              #
-#      no solo guarda, si no que, es para      #
-#                 crear los IDS                #
-#                                              #
-# ============================================ #
 
 def guardar_en_dataframe(productos_data):
     """
@@ -911,11 +891,7 @@ def guardar_en_dataframe(productos_data):
     
     os.makedirs("scraping_results", exist_ok=True)
 
-    # ============================================ #  
-    #   Hay que cambiar el nombre del archivo      #
-    # ============================================ #
-    
-    nombre_archivo = f"scraping_results/ebooks_mediamarkt_completo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv" #cambiar aqui el nombre del archivo que se descarga.
+    nombre_archivo = f"scraping_results/ebooks_mediamarkt_completo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     file_path = nombre_archivo
     df.to_csv(file_path, index=False, encoding='utf-8')
     
@@ -987,11 +963,9 @@ def main():
     print("="*60)
     
     driver = None
-# ============================================ #  
-#   Hay que cambiar la url                     #
-# ============================================ #   
+    
     try:
-        url = "https://www.mediamarkt.es/es/category/ebooks-249.html?sort=currentprice+desc" #cambio de url!!!!
+        url = "https://www.mediamarkt.es/es/category/ebooks-249.html?sort=currentprice+desc"
         
         print(f"\n🌐 Accediendo a: {url}")
         
