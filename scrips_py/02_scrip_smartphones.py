@@ -37,7 +37,7 @@ marcas_moviles = [
     'OSCAL', 'ENERGIZER'
 ]
 
-def a(nombre):
+def extraer_marca(nombre):
     if pd.isna(nombre):
         return 'Desconocido'
     
