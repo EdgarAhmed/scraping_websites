@@ -44,7 +44,7 @@ marcas_televisores = [
 ]
 
 # Función para extraer la marca del nombre del televisor
-def a(nombre):
+def extraer_marca(nombre):
     if pd.isna(nombre):
         return 'Desconocido'
     
