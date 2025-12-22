@@ -257,7 +257,9 @@ def configurar_google_drive():
         from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
         
         # Verificar si hay credenciales disponibles
-        credenciales_json = os.environ.get('GOOGLE_CREDENTIALS_JSON')
+        credenciales_json = (
+            os.environ.get('GOOGLE_CREDENTIALS_JSON_2')
+            or os.environ.get('GOOGLE_CREDENTIALS_JSON'))
         
         if not credenciales_json:
             print("⚠️  No se encontraron credenciales de Google Drive en variables de entorno")
@@ -403,7 +405,7 @@ def subir_archivo_drive(service, nombre_archivo, contenido_csv, folder_id, file_
 
 def actualizar_csv_drive(
     df_nuevo,
-    folder_id="17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7", #cambio en caso de que quiera, que querré...
+    folder_id= "1cSW4uOfw4x61a-R6TAOyn6ejEHNiyX0v" #"17jYoslfZdmPgvbO2JjEWazHmS4r79Lw7", #cambio en caso de que quiera, que querré...
     nombre_archivo="ebooks_mediamarkt.csv" #cambio del nombre del archivo. 
 ):
     print("\n" + "="*60)
