@@ -54,6 +54,7 @@ jobs:
         
         # Google Drive credentials (configure this in GitHub Secrets)
         GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+        GOOGLE_CREDENTIALS_JSON_2: ${{ secrets.GOOGLE_CREDENTIALS_JSON_2 }} # google credentials 2
       run: |
         echo "📁 Working directory: $(pwd)"
         echo "📁 Repository structure:"
