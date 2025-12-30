@@ -648,12 +648,8 @@ def extraer_link_producto(contenedor_producto, driver, profundidad=0, max_profun
 def extraer_productos_pagina(driver):
     """
     Extrae los productos de una sola página
-    Versión robusta:
-    - El enlace se extrae desde el <a> ancestro del título
-    - El contenedor se ancla a un bloque con precio
-    - No sube el DOM a ciegas
+    EXACTAMENTE igual que el código original
     """
-
     productos_pagina = []
 
     try:
@@ -664,33 +660,30 @@ def extraer_productos_pagina(driver):
             try:
                 nombre = titulo.text.strip()
 
-                # 🟢 1. ENLACE — anclado al <a> ancestro del título
+                # 🔗 ENLACE (ancestro <a>)
                 try:
                     enlace_elem = titulo.find_element(By.XPATH, ".//ancestor::a[1]")
                     enlace = enlace_elem.get_attribute("href")
-
                     if enlace and not enlace.startswith("http"):
                         enlace = "https://www.mediamarkt.es" + enlace
-
                 except Exception:
                     enlace = "No disponible"
 
-                # 🟢 2. CONTENEDOR — bloque que contiene precio
-                try:
-                    contenedor = titulo.find_element(
-                        By.XPATH,
-                        ".//ancestor::div[.//text()[contains(., '€')]]"
-                    )
-                except Exception:
-                    contenedor = titulo
+                # 🧱 CONTENEDOR — MISMA LÓGICA QUE EL NOTEBOOK
+                contenedor = titulo
+                for _ in range(5):
+                    contenedor = contenedor.find_element(By.XPATH, "./..")
+                    precios = contenedor.find_elements(By.XPATH, ".//*[contains(text(), '€')]")
+                    if precios:
+                        break
 
-                # 🟢 3. PRECIO
+                # 💰 PRECIO
                 precio = extraer_precio_producto(contenedor)
 
-                # 🟢 4. MARCA
-                marca = extraer_marca(nombre)
+                # 🏷️ MARCA
+                marca = extraer_marca_ebook(nombre)
 
-                # 🟢 5. ID CONSISTENTE
+                # 🆔 ID CONSISTENTE
                 producto_id = generar_id_consistente(nombre)
 
                 productos_pagina.append({
@@ -710,6 +703,7 @@ def extraer_productos_pagina(driver):
     except Exception as e:
         print(f"❌ Error extrayendo productos de la página: {e}")
         return productos_pagina
+    
     
 def extraer_productos(driver):
     """
