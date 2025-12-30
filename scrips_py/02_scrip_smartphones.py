@@ -685,7 +685,7 @@ def extraer_productos_pagina(driver):
                 precio = extraer_precio_producto(contenedor)
 
                 # 🏷️ MARCA
-                marca = extraer_marca_ebook(nombre)
+                marca = extraer_marca(nombre)
 
                 # 🆔 ID CONSISTENTE
                 producto_id = generar_id_consistente(nombre)
