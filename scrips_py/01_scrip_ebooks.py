@@ -559,37 +559,79 @@ def obtener_total_articulos(driver):
         print(f"❌ Error obteniendo el total de artículos: {e}")
         return None, 10
 
+# ============================================ #
+#                                              #
+#      extraer productos                       #
+#                                              #
+# ============================================ #
+
 def extraer_precio_producto(contenedor_producto):
     """
-    Función específica para extraer el precio correcto de un producto
-    EXACTLY like old notebook
+    Extrae precio rebajado y precio anterior (si existe)
+    Prioriza siempre el precio rebajado
     """
     try:
+        precio_rebajado = None
+        precio_antes = None
+
+        # 🟢 1️⃣ Precio ANTES (tachado)
         try:
-            precio_final = contenedor_producto.find_element(By.CSS_SELECTOR, 'span.sc-94eb08bc-0.dYbTef.sc-8a3a8cd8-2.csCDkt')
-            return precio_final.text
+            strike_elem = contenedor_producto.find_element(
+                By.CSS_SELECTOR,
+                '[data-test="mms-strike-price-type-xop"] span[aria-hidden="true"]'
+            )
+            texto = strike_elem.text.strip()
+            if '€' in texto:
+                precio_antes = texto
         except:
             pass
-        
+
+        # 🟢 2️⃣ Precio REBAJADO (precio real)
         try:
-            precio_normal = contenedor_producto.find_element(By.CSS_SELECTOR, 'span.sc-94eb08bc-0.OhHlB.sc-8a3a8cd8-2.csCDkt')
-            return precio_normal.text
+            rebajado_elem = contenedor_producto.find_element(
+                By.CSS_SELECTOR,
+                'span.sc-94eb08bc-0.dYbTef'
+            )
+            texto = rebajado_elem.text.strip()
+            if '€' in texto:
+                precio_rebajado = texto
         except:
             pass
-        
-        try:
-            elementos_precio = contenedor_producto.find_elements(By.XPATH, ".//*[contains(text(), '€')]")
-            for elem in elementos_precio:
-                texto = elem.text.strip()
-                if '€' in texto and any(c.isdigit() for c in texto):
-                    return texto
-        except:
-            pass
-        
-        return "Precio no disponible"
-        
+
+        # 🟡 3️⃣ Fallback genérico (por si MediaMarkt vuelve a cambiar clases)
+        if not precio_rebajado:
+            try:
+                elementos_precio = contenedor_producto.find_elements(
+                    By.XPATH,
+                    ".//*[contains(text(), '€')]"
+                )
+                for elem in elementos_precio:
+                    texto = elem.text.strip()
+                    if '€' in texto and any(c.isdigit() for c in texto):
+                        precio_rebajado = texto
+                        break
+            except:
+                pass
+
+        # 🟢 Resultado final
+        if precio_rebajado or precio_antes:
+            return {
+                "precio_rebajado": precio_rebajado,
+                "precio_antes": precio_antes
+            }
+
+        return {
+            "precio_rebajado": None,
+            "precio_antes": None
+        }
+
     except Exception as e:
-        return f"Error: {e}"
+        return {
+            "precio_rebajado": None,
+            "precio_antes": None,
+            "error": str(e)
+        }
+
 
 def extraer_link_producto(contenedor_producto, driver, profundidad=0, max_profundidad=3):
     """
@@ -705,7 +747,7 @@ def extraer_link_producto(contenedor_producto, driver, profundidad=0, max_profun
 def extraer_productos_pagina(driver):
     """
     Extrae los productos de una sola página
-    EXACTAMENTE igual que el código original
+    ACTUALIZADO: Ahora maneja precios finales y originales
     """
     productos_pagina = []
 
@@ -734,31 +776,67 @@ def extraer_productos_pagina(driver):
                     if precios:
                         break
 
-                # 💰 PRECIO
-                precio = extraer_precio_producto(contenedor)
-
+                # 💰 PRECIO (ahora usando la función actualizada que devuelve diccionario)
+                precios_info = extraer_precio_producto(contenedor)
+                
+                # Extraer los precios del diccionario
+                precio_final = precios_info['precio_final']
+                precio_original = precios_info['precio_original']
+                
                 # 🏷️ MARCA
                 marca = extraer_marca_ebook(nombre)
 
                 # 🆔 ID CONSISTENTE
                 producto_id = generar_id_consistente(nombre)
 
-                productos_pagina.append({
+                # Crear diccionario con ambos precios
+                producto = {
                     'id': producto_id,
                     'nombre': nombre,
-                    'precio': precio,
+                    'precio': precio_final,  # Precio final/rebajado
+                    'precio_original_rebaja': precio_original,  # Precio antes de rebaja
                     'marca': marca,
                     'enlace': enlace
-                })
+                }
+                
+                productos_pagina.append(producto)
+
+                # Mostrar información de depuración para los primeros productos
+                if i <= 3:
+                    print(f"      📊 Producto {i}: {nombre[:30]}...")
+                    print(f"         💰 Precio final: {precio_final}")
+                    if precio_original:
+                        print(f"         💸 Precio original: {precio_original}")
+                    print(f"         🏷️  Marca: {marca}")
 
             except Exception as e:
                 print(f"   ❌ Error en producto {i}: {e}")
                 continue
 
+        # Resumen de la página
+        if productos_pagina:
+            print(f"   📊 Resumen página:")
+            print(f"      Total productos: {len(productos_pagina)}")
+            
+            # Contar productos con precio original
+            productos_con_rebaja = sum(1 for p in productos_pagina if p['precio_original_rebaja'])
+            print(f"      Productos con precio rebajado: {productos_con_rebaja}")
+            
+            # Mostrar algunos ejemplos de precios
+            for idx, producto in enumerate(productos_pagina[:2]):
+                precio_final = producto['precio']
+                precio_original = producto['precio_original_rebaja']
+                if precio_original:
+                    print(f"      Ejemplo {idx+1}: {producto['nombre'][:25]}... → {precio_final} (antes {precio_original})")
+                else:
+                    print(f"      Ejemplo {idx+1}: {producto['nombre'][:25]}... → {precio_final}")
+
         return productos_pagina
 
     except Exception as e:
         print(f"❌ Error extrayendo productos de la página: {e}")
+        import traceback
+        traceback.print_exc()
         return productos_pagina
     
 def extraer_productos(driver):
@@ -841,7 +919,7 @@ def extraer_productos(driver):
 def guardar_en_dataframe(productos_data):
     """
     Convierte la lista de productos en un DataFrame y lo guarda en CSV
-    EXACTLY like old notebook - MODIFICADO para incluir enlaces
+    ACTUALIZADO: Incluye precio_original_rebaja
     """
     if not productos_data:
         print("No hay datos para guardar")
@@ -865,13 +943,24 @@ def guardar_en_dataframe(productos_data):
         for i, (nombre, producto_id) in enumerate(zip(df['nombre'].head(3), df['id'].head(3))):
             print(f"   {i+1}. {nombre[:30]}... → ID: {producto_id}")
     
-    # Limpiar columna precio
+    # Limpiar columna precio (solo limpia el precio_final)
     df = limpiar_columna_precio(df)
     
-    # Orden de columnas con ID incluido - AÑADIDO 'enlace'
-    column_order = ['fecha_extraccion', 'id', 'numero', 'nombre', 'marca', 'precio', 'enlace']
+    # Orden de columnas con ID incluido
+    column_order = [
+        'fecha_extraccion', 
+        'id', 
+        'numero', 
+        'nombre', 
+        'marca', 
+        'precio',  # Precio final limpio (numérico)
+        'precio_original_rebaja',  # Precio original antes de rebaja (string)
+        'enlace'
+    ]
+    
+    # Añadir precio_original de la limpieza si existe
     if 'precio_original' in df.columns:
-        column_order.append('precio_original')
+        column_order.append('precio_original')  # String original del precio_final
     
     # Asegurar que todas las columnas existan
     existing_columns = [col for col in column_order if col in df.columns]
@@ -891,8 +980,26 @@ def guardar_en_dataframe(productos_data):
     print(f"\n✅ Datos guardados en: {file_path}")
     print(f"📊 Total de productos únicos: {len(df)}")
     
+    # Estadísticas de precios rebajados
+    productos_con_rebaja = df[df['precio_original_rebaja'].notna() & (df['precio_original_rebaja'] != '')].shape[0]
+    porcentaje_rebaja = (productos_con_rebaja / len(df)) * 100 if len(df) > 0 else 0
+    
+    print(f"\n💰 Productos con precio rebajado: {productos_con_rebaja} ({porcentaje_rebaja:.1f}%)")
+    
+    # Mostrar ejemplos de productos rebajados
+    if productos_con_rebaja > 0:
+        print(f"📋 Ejemplos de productos rebajados:")
+        rebajados = df[df['precio_original_rebaja'].notna() & (df['precio_original_rebaja'] != '')].head(3)
+        for idx, row in rebajados.iterrows():
+            # Limpiar formato para mostrar
+            precio_final_limpio = row['precio'] if pd.notna(row['precio']) else "N/A"
+            precio_original_limpio = row['precio_original_rebaja']
+            print(f"   {row['nombre'][:30]}...")
+            print(f"     → Ahora: {precio_final_limpio}€")
+            print(f"     → Antes: {precio_original_limpio}")
+    
     # Estadísticas de marcas
-    print(f"🏷️  Distribución de marcas:")
+    print(f"\n🏷️  Distribución de marcas:")
     distribucion_marcas = df['marca'].value_counts()
     for marca, cantidad in distribucion_marcas.head(10).items():
         print(f"   {marca}: {cantidad} productos")
@@ -900,41 +1007,9 @@ def guardar_en_dataframe(productos_data):
     if len(distribucion_marcas) > 10:
         print(f"   ... y {len(distribucion_marcas) - 10} marcas más")
     
-    # Estadísticas de IDs
-    print(f"\n🔑 Estadísticas de IDs:")
-    print(f"   IDs únicos: {df['id'].nunique()}")
-    print(f"   Productos duplicados (mismo ID): {len(df) - df['id'].nunique()}")
-    
-    if df['id'].nunique() < len(df):
-        print(f"   ⚠️  Hay {len(df) - df['id'].nunique()} productos con IDs duplicados")
-        duplicados = df[df.duplicated('id', keep=False)]
-        print(f"   📋 Productos con IDs duplicados (primeros 3):")
-        for _, row in duplicados.head(3).iterrows():
-            print(f"      - ID: {row['id']} → {row['nombre'][:40]}...")
-    
-    # Estadísticas de precios
-    productos_con_precio_valido = df['precio'].notna().sum()
-    productos_sin_precio_valido = df['precio'].isna().sum()
-    
-    print(f"\n💰 Productos con precio válido: {productos_con_precio_valido}")
-    print(f"⚠️  Productos sin precio válido: {productos_sin_precio_valido}")
-    
-    if productos_con_precio_valido > 0:
-        print(f"📈 Precio promedio: {df['precio'].mean():.2f}€")
-        print(f"📊 Precio mediano: {df['precio'].median():.2f}€")
-        print(f"📉 Precio mínimo: {df['precio'].min():.2f}€")
-        print(f"📈 Precio máximo: {df['precio'].max():.2f}€")
-    
     # Estadísticas de enlaces
     enlaces_validos = df[df['enlace'] != 'No disponible']['enlace'].count()
     print(f"\n🔗 Enlaces extraídos: {enlaces_validos} de {len(df)} productos")
-    
-    # Mostrar algunos enlaces de ejemplo
-    if enlaces_validos > 0:
-        print(f"📋 Ejemplos de enlaces extraídos:")
-        for i, row in df[df['enlace'] != 'No disponible'].head(3).iterrows():
-            print(f"   {row['nombre'][:30]}...")
-            print(f"     → {row['enlace']}")
     
     print("\n📋 Primeras 5 filas del DataFrame:")
     print(df.head())
