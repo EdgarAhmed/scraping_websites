@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Script de scraping para ebooks de MediaMarkt con actualización en Google Drive
-EXACTLY matches the old notebook scraping logic
+AHORA CON PRECIO ORIGINAL Y PRECIO REBAJADO
 """
 
 import pandas as pd
@@ -20,7 +20,7 @@ import re
 import sys
 import io
 import json
-import hashlib  # Importar hashlib para generar IDs
+import hashlib
 
 # ============================================ #
 #                                              #
@@ -107,7 +107,7 @@ def extraer_marca_ebook(nombre):
                 return marca.title()  # Devuelve con la primera letra mayúscula
 
     return 'Otra marca'
-    
+
 # ============================================ #
 #                                              #
 #    FUNCIONES PARA GENERAR IDs ÚNICOS         #
@@ -130,31 +130,6 @@ def generar_id_consistente(nombre):
     # Tomar los primeros 12 caracteres del hash para un ID legible
     return hash_hex[:12]
 
-def generar_id_descriptivo(nombre, marca=""):
-    """
-    Genera un ID más descriptivo combinando marca y hash
-    """
-    # Normalizar inputs
-    nombre_norm = str(nombre).lower().strip()
-    marca_norm = str(marca).lower().strip() if marca else ""
-    
-    # Crear una clave combinada
-    if marca_norm:
-        clave = f"{marca_norm}:{nombre_norm}"
-    else:
-        clave = nombre_norm
-    
-    # Generar hash
-    hash_obj = hashlib.md5(clave.encode('utf-8'))
-    hash_hex = hash_obj.hexdigest()[:8]  # Más corto
-    
-    # Si tenemos marca, crear ID del tipo "MARCA_HASH"
-    if marca_norm:
-        marca_abrev = marca_norm[:4].upper()
-        return f"{marca_abrev}_{hash_hex}"
-    else:
-        return hash_hex
-
 # ============================================ #
 #                                              #
 #          LIMPIA PRECIOS                      #
@@ -163,78 +138,76 @@ def generar_id_descriptivo(nombre, marca=""):
 
 def limpiar_columnas_precio(df):
     """
-    Limpia las columnas precio_actual y precio_original para extraer valores numéricos
+    Limpia las columnas de precio para extraer valores numéricos
     """
     print("\n" + "="*60)
     print("LIMPIANDO COLUMNAS DE PRECIO")
     print("="*60)
     
     try:
-        # Guardar copias de los precios originales antes de limpiar
-        if 'precio_actual_original' not in df.columns:
-            df['precio_actual_original'] = df['precio_actual'].copy()
-        if 'precio_original_original' not in df.columns:
-            df['precio_original_original'] = df['precio_original'].copy()
-        
         # Estadísticas antes de limpiar
         print(f"📊 Total de registros: {len(df)}")
-        print(f"💰 Precios actuales únicos antes de limpiar: {df['precio_actual'].nunique()}")
-        print(f"📋 Precios originales únicos antes de limpiar: {df['precio_original'].nunique()}")
         
-        # Función auxiliar para limpiar un precio
-        def limpiar_precio_individual(precio_str):
+        # Función para limpiar un precio individual
+        def limpiar_precio(precio_str):
             if pd.isna(precio_str):
                 return None
             precio_str = str(precio_str)
-            # Eliminar todo excepto números y comas
-            precio_str = re.sub(r'[^\d,]', '', precio_str)
-            # Convertir comas a puntos
+            # Eliminar caracteres no numéricos excepto comas y puntos
+            precio_str = re.sub(r'[^\d,\.]', '', precio_str)
+            # Reemplazar comas por puntos para decimales
             precio_str = precio_str.replace(',', '.')
+            # Si hay múltiples puntos, mantener solo el último como decimal
+            if precio_str.count('.') > 1:
+                partes = precio_str.split('.')
+                precio_str = ''.join(partes[:-1]) + '.' + partes[-1]
             try:
                 return float(precio_str)
             except:
                 return None
         
-        # Limpiar ambas columnas de precio
-        df['precio_actual'] = df['precio_actual'].apply(limpiar_precio_individual)
-        df['precio_original'] = df['precio_original'].apply(limpiar_precio_individual)
+        # Guardar los precios originales como strings antes de limpiar
+        if 'precio_str' not in df.columns and 'precio' in df.columns:
+            df['precio_str'] = df['precio'].astype(str)
         
-        # Calcular descuento si ambos precios están disponibles
-        df['descuento_porcentaje'] = None
-        mask = df['precio_actual'].notna() & df['precio_original'].notna() & (df['precio_original'] > 0)
-        df.loc[mask, 'descuento_porcentaje'] = (
-            (df.loc[mask, 'precio_original'] - df.loc[mask, 'precio_actual']) / 
-            df.loc[mask, 'precio_original'] * 100
-        )
+        if 'precio_original_str' not in df.columns and 'precio_original' in df.columns:
+            df['precio_original_str'] = df['precio_original'].astype(str)
         
-        # Estadísticas después de limpiar
-        print(f"✅ Columnas de precio limpiadas exitosamente")
-        print(f"\n💰 PRECIO ACTUAL:")
-        print(f"   - Valores únicos: {df['precio_actual'].nunique()}")
-        print(f"   - Valores nulos: {df['precio_actual'].isna().sum()}")
-        print(f"   - Rango: {df['precio_actual'].min():.2f}€ - {df['precio_actual'].max():.2f}€")
-        print(f"   - Promedio: {df['precio_actual'].mean():.2f}€")
+        # Limpiar las columnas de precio
+        if 'precio' in df.columns:
+            df['precio'] = df['precio'].apply(limpiar_precio)
+            print(f"💰 Precio (limpio): {df['precio'].notna().sum()} valores válidos")
         
-        print(f"\n📋 PRECIO ORIGINAL:")
-        print(f"   - Valores únicos: {df['precio_original'].nunique()}")
-        print(f"   - Valores nulos: {df['precio_original'].isna().sum()}")
-        print(f"   - Rango: {df['precio_original'].min():.2f}€ - {df['precio_original'].max():.2f}€")
-        print(f"   - Promedio: {df['precio_original'].mean():.2f}€")
+        if 'precio_original' in df.columns:
+            df['precio_original'] = df['precio_original'].apply(limpiar_precio)
+            print(f"📋 Precio original (limpio): {df['precio_original'].notna().sum()} valores válidos")
         
-        # Estadísticas de descuentos
-        productos_con_descuento = df['descuento_porcentaje'].notna().sum()
-        if productos_con_descuento > 0:
-            print(f"\n🎯 PRODUCTOS CON DESCUENTO: {productos_con_descuento}")
-            print(f"   - Descuento promedio: {df['descuento_porcentaje'].mean():.1f}%")
-            print(f"   - Descuento máximo: {df['descuento_porcentaje'].max():.1f}%")
-            print(f"   - Descuento mínimo: {df['descuento_porcentaje'].min():.1f}%")
+        if 'precio_rebajado' in df.columns:
+            df['precio_rebajado'] = df['precio_rebajado'].apply(limpiar_precio)
+            print(f"🎯 Precio rebajado (limpio): {df['precio_rebajado'].notna().sum()} valores válidos")
         
-        # Mostrar primeros valores
-        print("\n📋 Primeros 5 valores de precios limpios:")
-        muestra = df[['precio_actual_original', 'precio_actual', 
-                      'precio_original_original', 'precio_original',
-                      'descuento_porcentaje']].head()
-        print(muestra.to_string())
+        # Si no existe precio_rebajado, crearlo como copia de precio
+        if 'precio_rebajado' not in df.columns and 'precio' in df.columns:
+            df['precio_rebajado'] = df['precio']
+            print(f"✅ Columna precio_rebajado creada como copia de precio")
+        
+        # Calcular descuento si tenemos ambos precios
+        if 'precio_original' in df.columns and 'precio_rebajado' in df.columns:
+            mask = df['precio_original'].notna() & df['precio_rebajado'].notna() & (df['precio_original'] > 0)
+            df['descuento_porcentaje'] = None
+            df.loc[mask, 'descuento_porcentaje'] = (
+                (df.loc[mask, 'precio_original'] - df.loc[mask, 'precio_rebajado']) / 
+                df.loc[mask, 'precio_original'] * 100
+            )
+            productos_con_descuento = df['descuento_porcentaje'].notna().sum()
+            print(f"🎯 Productos con descuento calculado: {productos_con_descuento}")
+        
+        # Estadísticas
+        if 'precio' in df.columns:
+            print(f"\n📊 ESTADÍSTICAS PRECIO:")
+            print(f"   - Rango: {df['precio'].min():.2f}€ - {df['precio'].max():.2f}€")
+            print(f"   - Promedio: {df['precio'].mean():.2f}€")
+            print(f"   - Mediana: {df['precio'].median():.2f}€")
         
         return df
         
@@ -576,35 +549,43 @@ def obtener_total_articulos(driver):
         print(f"❌ Error obteniendo el total de artículos: {e}")
         return None, 10
 
-# ============================================ #
-#                                              #
-#      extraer productos                       #
-#                                              #
-# ============================================ #
-
 def extraer_precio_producto(contenedor_producto):
     """
-    Función específica para extraer tanto el precio actual como el precio original
-    EXACTLY like old notebook - MODIFICADO para extraer ambos precios
+    Función para extraer PRECIO REBAJADO (actual) y PRECIO ORIGINAL
     """
     try:
-        precio_actual = None
+        precio_rebajado = None
         precio_original = None
         
-        # 1. INTENTAR OBTENER PRECIO ACTUAL (rebajado)
-        # Selector para precio actual rebajado
+        print(f"      🔍 Extrayendo precios...")
+        
+        # 1. PRECIO REBAJADO (actual) - el que se muestra como precio actual
+        # Selector: <span class="sc-94eb08bc-0 dYbTef sc-a69e154d-2 dJKnju">819,89 €</span>
         try:
-            precio_actual_elem = contenedor_producto.find_element(
+            precio_rebajado_elem = contenedor_producto.find_element(
                 By.CSS_SELECTOR, 
                 'span.sc-94eb08bc-0.dYbTef.sc-a69e154d-2.dJKnju'
             )
-            precio_actual = precio_actual_elem.text
-            print(f"      ✅ Precio actual encontrado: {precio_actual}")
-        except:
-            pass
+            precio_rebajado = precio_rebajado_elem.text
+            print(f"      ✅ Precio rebajado encontrado: {precio_rebajado}")
+        except Exception as e:
+            print(f"      ⚠️  No se encontró precio rebajado (selector 1): {e}")
         
-        # 2. INTENTAR OBTENER PRECIO ORIGINAL (antes del descuento)
-        # Selector para precio original (tachado)
+        # Si no se encontró con el primer selector, buscar con otros selectores
+        if not precio_rebajado:
+            try:
+                # Otro selector para precio actual
+                precio_rebajado_elem = contenedor_producto.find_element(
+                    By.CSS_SELECTOR, 
+                    'span.sc-94eb08bc-0.dYbTef.sc-8a3a8cd8-2.csCDkt'
+                )
+                precio_rebajado = precio_rebajado_elem.text
+                print(f"      ✅ Precio rebajado encontrado (selector alternativo): {precio_rebajado}")
+            except Exception as e:
+                print(f"      ⚠️  No se encontró precio rebajado (selector 2): {e}")
+        
+        # 2. PRECIO ORIGINAL (antes del descuento)
+        # Selector: <span class="sc-94eb08bc-0 iJxYPS">819,99 €</span>
         try:
             precio_original_elem = contenedor_producto.find_element(
                 By.CSS_SELECTOR, 
@@ -612,85 +593,60 @@ def extraer_precio_producto(contenedor_producto):
             )
             precio_original = precio_original_elem.text
             print(f"      📋 Precio original encontrado: {precio_original}")
-        except:
-            pass
+        except Exception as e:
+            print(f"      ⚠️  No se encontró precio original: {e}")
         
-        # 3. Si no se encontró precio actual con el selector específico,
-        # intentar con otros selectores (para productos sin descuento)
-        if not precio_actual:
-            try:
-                precio_final = contenedor_producto.find_element(
-                    By.CSS_SELECTOR, 
-                    'span.sc-94eb08bc-0.dYbTef.sc-8a3a8cd8-2.csCDkt'
-                )
-                precio_actual = precio_final.text
-                print(f"      ✅ Precio actual (alternativo) encontrado: {precio_actual}")
-            except:
-                pass
+        # Si no se encontró precio original, usar el mismo que el rebajado
+        if not precio_original and precio_rebajado:
+            precio_original = precio_rebajado
+            print(f"      📝 Precio original igual al rebajado (sin descuento)")
         
-        if not precio_actual:
-            try:
-                precio_normal = contenedor_producto.find_element(
-                    By.CSS_SELECTOR, 
-                    'span.sc-94eb08bc-0.OhHlB.sc-8a3a8cd8-2.csCDkt'
-                )
-                precio_actual = precio_normal.text
-                print(f"      ✅ Precio actual (normal) encontrado: {precio_actual}")
-            except:
-                pass
-        
-        # 4. Si aún no hay precios, buscar cualquier elemento que contenga '€'
-        if not precio_actual or not precio_original:
+        # Si no se encontró ningún precio, buscar cualquier elemento con €
+        if not precio_rebajado or not precio_original:
             try:
                 elementos_precio = contenedor_producto.find_elements(
                     By.XPATH, 
                     ".//*[contains(text(), '€')]"
                 )
-                precios_encontrados = []
+                precios = []
                 for elem in elementos_precio:
                     texto = elem.text.strip()
                     if '€' in texto and any(c.isdigit() for c in texto):
-                        precios_encontrados.append(texto)
+                        precios.append(texto)
                 
-                # Si encontramos al menos un precio
-                if precios_encontrados:
-                    if len(precios_encontrados) >= 2:
-                        # Generalmente el primero es el actual y el segundo el original
-                        precio_actual = precio_actual or precios_encontrados[0]
-                        precio_original = precio_original or precios_encontrados[1]
-                    else:
-                        precio_actual = precio_actual or precios_encontrados[0]
-                        precio_original = precio_original or precio_actual
-                        
-                    print(f"      🔍 Precios encontrados por búsqueda: {precios_encontrados}")
+                if len(precios) >= 2:
+                    # Generalmente el primero es el original y el segundo el rebajado
+                    precio_original = precio_original or precios[0]
+                    precio_rebajado = precio_rebajado or precios[1]
+                    print(f"      🔍 Precios encontrados por búsqueda general: Original={precio_original}, Rebajado={precio_rebajado}")
+                elif len(precios) == 1:
+                    precio_original = precio_original or precios[0]
+                    precio_rebajado = precio_rebajado or precios[0]
+                    print(f"      🔍 Un solo precio encontrado: {precios[0]}")
                     
             except Exception as e:
                 print(f"      ⚠️  Error en búsqueda alternativa de precios: {e}")
         
-        # 5. Si no se encontró precio original pero sí precio actual,
-        # asumir que son iguales (producto sin descuento)
-        if precio_actual and not precio_original:
-            precio_original = precio_actual
-            print(f"      📝 Precio original igual al actual (sin descuento)")
+        # Valores por defecto si no se encontró nada
+        if not precio_rebajado:
+            precio_rebajado = "No disponible"
+            print(f"      ❌ No se encontró precio rebajado")
         
-        # 6. Si no se encontró ningún precio
-        if not precio_actual:
-            precio_actual = "Precio no disponible"
-            precio_original = "Precio no disponible"
-            print(f"      ⚠️  No se encontró precio")
+        if not precio_original:
+            precio_original = "No disponible"
+            print(f"      ❌ No se encontró precio original")
         
         return {
-            'precio_actual': precio_actual,
+            'precio_rebajado': precio_rebajado,
             'precio_original': precio_original
         }
         
     except Exception as e:
         print(f"      ❌ Error extrayendo precios: {e}")
         return {
-            'precio_actual': f"Error: {e}",
+            'precio_rebajado': f"Error: {e}",
             'precio_original': f"Error: {e}"
         }
-
 
 def extraer_link_producto(contenedor_producto, driver, profundidad=0, max_profundidad=3):
     """
@@ -806,7 +762,7 @@ def extraer_link_producto(contenedor_producto, driver, profundidad=0, max_profun
 def extraer_productos_pagina(driver):
     """
     Extrae los productos de una sola página
-    EXACTAMENTE igual que el código original - MODIFICADO para ambos precios
+    CON TODOS LOS PRECIOS: precio_rebajado y precio_original
     """
     productos_pagina = []
 
@@ -835,9 +791,9 @@ def extraer_productos_pagina(driver):
                     if precios:
                         break
 
-                # 💰 PRECIOS (ACTUAL Y ORIGINAL)
+                # 💰 PRECIOS (REBAJADO Y ORIGINAL)
                 precios_dict = extraer_precio_producto(contenedor)
-                precio_actual = precios_dict['precio_actual']
+                precio_rebajado = precios_dict['precio_rebajado']
                 precio_original = precios_dict['precio_original']
 
                 # 🏷️ MARCA
@@ -849,8 +805,9 @@ def extraer_productos_pagina(driver):
                 productos_pagina.append({
                     'id': producto_id,
                     'nombre': nombre,
-                    'precio_actual': precio_actual,
+                    'precio': precio_rebajado,  # Este será el precio rebajado (actual)
                     'precio_original': precio_original,
+                    'precio_rebajado': precio_rebajado,  # Columna adicional para claridad
                     'marca': marca,
                     'enlace': enlace
                 })
@@ -864,10 +821,10 @@ def extraer_productos_pagina(driver):
     except Exception as e:
         print(f"❌ Error extrayendo productos de la página: {e}")
         return productos_pagina
-    
+
 def extraer_productos(driver):
     """
-    Extrae todos los productos EXACTLY like old notebook
+    Extrae todos los productos
     """
     productos_data = []
     contador_global = 1
@@ -945,7 +902,7 @@ def extraer_productos(driver):
 def guardar_en_dataframe(productos_data):
     """
     Convierte la lista de productos en un DataFrame y lo guarda en CSV
-    EXACTLY like old notebook - MODIFICADO para ambos precios
+    CON LAS COLUMNAS CORRECTAS: precio (rebajado), precio_original y precio_rebajado
     """
     if not productos_data:
         print("No hay datos para guardar")
@@ -969,17 +926,24 @@ def guardar_en_dataframe(productos_data):
     # Limpiar columnas de precio
     df = limpiar_columnas_precio(df)
     
-    # Orden de columnas con ambos precios incluidos
+    # ORDEN DE COLUMNAS EXACTO COMO SE SOLICITA
     column_order = [
-        'fecha_extraccion', 'id', 'numero', 'nombre', 'marca', 
-        'precio_actual', 'precio_original', 'descuento_porcentaje', 'enlace'
+        'fecha_extraccion',
+        'id',
+        'numero',
+        'nombre',
+        'marca',
+        'precio',           # Este es el precio actual (rebajado)
+        'enlace',
+        'precio_original',  # Precio original (antes de descuento)
+        'precio_rebajado'   # Precio rebajado (igual que 'precio' para claridad)
     ]
     
-    # Añadir columnas originales si existen
-    if 'precio_actual_original' in df.columns:
-        column_order.append('precio_actual_original')
-    if 'precio_original_original' in df.columns:
-        column_order.append('precio_original_original')
+    # Añadir columnas adicionales si existen
+    additional_columns = []
+    for col in df.columns:
+        if col not in column_order and col not in ['descuento_porcentaje', 'precio_str', 'precio_original_str']:
+            additional_columns.append(col)
     
     # Asegurar que todas las columnas existan
     existing_columns = [col for col in column_order if col in df.columns]
@@ -988,7 +952,10 @@ def guardar_en_dataframe(productos_data):
     if missing_columns:
         print(f"⚠️  Advertencia: Columnas faltantes en DataFrame: {missing_columns}")
     
-    df = df[existing_columns]
+    # Combinar columnas principales con adicionales
+    final_columns = existing_columns + additional_columns
+    
+    df = df[final_columns]
     
     # Crear directorio si no existe
     os.makedirs("scraping_results", exist_ok=True)
@@ -1005,33 +972,40 @@ def guardar_en_dataframe(productos_data):
     print(f"\n📈 ESTADÍSTICAS DETALLADAS:")
     print(f"🏷️  Marcas diferentes: {df['marca'].nunique()}")
     
-    # Distribución de precios actuales
-    print(f"\n💰 DISTRIBUCIÓN DE PRECIOS ACTUALES:")
-    print(f"   - Precio promedio: {df['precio_actual'].mean():.2f}€")
-    print(f"   - Precio mediano: {df['precio_actual'].median():.2f}€")
-    print(f"   - Precio mínimo: {df['precio_actual'].min():.2f}€")
-    print(f"   - Precio máximo: {df['precio_actual'].max():.2f}€")
+    if 'precio' in df.columns and df['precio'].notna().any():
+        print(f"\n💰 PRECIO ACTUAL (REBAJADO):")
+        print(f"   - Promedio: {df['precio'].mean():.2f}€")
+        print(f"   - Mediana: {df['precio'].median():.2f}€")
+        print(f"   - Mínimo: {df['precio'].min():.2f}€")
+        print(f"   - Máximo: {df['precio'].max():.2f}€")
+    
+    if 'precio_original' in df.columns and df['precio_original'].notna().any():
+        print(f"\n📋 PRECIO ORIGINAL:")
+        print(f"   - Promedio: {df['precio_original'].mean():.2f}€")
+        print(f"   - Mediana: {df['precio_original'].median():.2f}€")
+        print(f"   - Mínimo: {df['precio_original'].min():.2f}€")
+        print(f"   - Máximo: {df['precio_original'].max():.2f}€")
     
     # Productos con descuento
-    productos_con_descuento = df['descuento_porcentaje'].notna().sum()
-    print(f"\n🎯 PRODUCTOS CON DESCUENTO: {productos_con_descuento} ({productos_con_descuento/len(df)*100:.1f}%)")
-    if productos_con_descuento > 0:
-        descuento_promedio = df['descuento_porcentaje'].mean()
-        print(f"   - Descuento promedio: {descuento_promedio:.1f}%")
-        
-        # Top 5 productos con mayor descuento
-        print(f"\n🏆 TOP 5 PRODUCTOS CON MAYOR DESCUENTO:")
-        top_descuentos = df.dropna(subset=['descuento_porcentaje']).nlargest(5, 'descuento_porcentaje')
-        for idx, row in top_descuentos.iterrows():
-            print(f"   {row['nombre'][:40]}...")
-            print(f"     Precio original: {row['precio_original']:.2f}€")
-            print(f"     Precio actual: {row['precio_actual']:.2f}€")
-            print(f"     Descuento: {row['descuento_porcentaje']:.1f}%")
-            print()
+    if 'descuento_porcentaje' in df.columns:
+        productos_con_descuento = df['descuento_porcentaje'].notna().sum()
+        if productos_con_descuento > 0:
+            print(f"\n🎯 PRODUCTOS CON DESCUENTO: {productos_con_descuento} ({productos_con_descuento/len(df)*100:.1f}%)")
+            descuento_promedio = df['descuento_porcentaje'].mean()
+            print(f"   - Descuento promedio: {descuento_promedio:.1f}%")
     
     # Estadísticas de enlaces
     enlaces_validos = df[df['enlace'] != 'No disponible']['enlace'].count()
     print(f"\n🔗 Enlaces extraídos: {enlaces_validos} de {len(df)} productos")
+    
+    # Mostrar primeros 3 productos como ejemplo
+    print(f"\n📋 PRIMEROS 3 PRODUCTOS (con precios):")
+    for idx, row in df.head(3).iterrows():
+        print(f"   {row['nombre'][:50]}...")
+        print(f"     Precio: {row['precio']:.2f}€")
+        print(f"     Precio original: {row['precio_original']:.2f}€" if 'precio_original' in row else "")
+        print(f"     Precio rebajado: {row['precio_rebajado']:.2f}€" if 'precio_rebajado' in row else "")
+        print()
     
     return df, file_path
 
@@ -1046,7 +1020,7 @@ def main():
     print("="*60)
     print("SCRAPING DE EBOOKS - MEDIAMARKT")
     print("="*60)
-    print("📌 AHORA CON PRECIO ACTUAL Y PRECIO ORIGINAL")
+    print("🎯 CON PRECIO ORIGINAL Y PRECIO REBAJADO")
     print(f"Fecha y hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
@@ -1072,6 +1046,8 @@ def main():
             return False
         
         print("\n🔄 Actualizando Google Drive (APPEND mode)...")
+        print("📌 Nota: Los datos se añadirán, NO se sobrescribirán")
+        print("📌 Se mantendrá el historial día a día")
         
         drive_actualizado = actualizar_csv_drive(df)
         
@@ -1087,9 +1063,14 @@ def main():
         print(f"📦 Productos obtenidos hoy: {len(df)}")
         print(f"🔑 IDs únicos generados: {df['id'].nunique()}")
         print(f"🏷️  Marcas diferentes encontradas: {df['marca'].nunique()}")
-        print(f"💰 Precios actuales válidos: {df['precio_actual'].notna().sum()}")
-        print(f"📋 Precios originales válidos: {df['precio_original'].notna().sum()}")
-        print(f"🎯 Productos con descuento: {df['descuento_porcentaje'].notna().sum()}")
+        if 'precio' in df.columns:
+            print(f"💰 Precios actuales válidos: {df['precio'].notna().sum()}")
+        if 'precio_original' in df.columns:
+            print(f"📋 Precios originales válidos: {df['precio_original'].notna().sum()}")
+        if 'precio_rebajado' in df.columns:
+            print(f"🎯 Precios rebajados válidos: {df['precio_rebajado'].notna().sum()}")
+        if 'descuento_porcentaje' in df.columns:
+            print(f"📉 Productos con descuento: {df['descuento_porcentaje'].notna().sum()}")
         print(f"🔗 Enlaces extraídos: {df[df['enlace'] != 'No disponible']['enlace'].count()}")
         print(f"📁 Archivo local generado: {archivo_csv}")
         print(f"💾 Google Drive: Datos añadidos al archivo histórico")
@@ -1113,3 +1094,7 @@ def main():
         print("\n" + "="*60)
         print("EJECUCIÓN FINALIZADA")
         print("="*60)
+
+if __name__ == "__main__":
+    success = main()
+    sys.exit(0 if success else 1)
