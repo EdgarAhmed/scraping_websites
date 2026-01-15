@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Script de scraping para Monitores de MediaMarkt con actualización en Google Drive
-EXACTLY matches the old notebook scraping logic
+Script de scraping para monitores de MediaMarkt con actualización en Google Drive
+MODIFICADO: Incluye precio original y precio rebajado
 """
 
 import pandas as pd
@@ -20,12 +20,10 @@ import re
 import sys
 import io
 import json
-import hashlib  # Importar hashlib para generar IDs
+import hashlib
 
 # ============================================ #
-#                                              #
-#       CONFIGURACIÓN DE MARCAS DE Movil       #
-#                                              #
+#          CONFIGURACIÓN DE MARCAS             #
 # ============================================ #
 
 marcas_monitores = [
@@ -50,150 +48,134 @@ def extraer_marca (nombre):
             return marca.title() 
     
     return 'Otra marca'
-    
+
 # ============================================ #
-#                                              #
-#    FUNCIONES PARA GENERAR IDs ÚNICOS         #
-#                                              #
+#          GENERACIÓN DE IDs ÚNICOS            #
 # ============================================ #
 
 def generar_id_consistente(nombre):
-    """
-    Genera un ID único y consistente basado en el nombre del producto
-    El mismo producto siempre tendrá el mismo ID
-    """
-    # Normalizar el nombre: minúsculas, sin espacios extra, caracteres especiales
+    """Genera un ID único y consistente basado en el nombre del producto"""
     nombre_normalizado = str(nombre).lower().strip()
-    nombre_normalizado = re.sub(r'\s+', ' ', nombre_normalizado)  # Reemplazar múltiples espacios por uno
+    nombre_normalizado = re.sub(r'\s+', ' ', nombre_normalizado)
     
-    # Crear un hash MD5 del nombre normalizado
     hash_obj = hashlib.md5(nombre_normalizado.encode('utf-8'))
     hash_hex = hash_obj.hexdigest()
     
-    # Tomar los primeros 12 caracteres del hash para un ID legible
     return hash_hex[:12]
 
-def generar_id_descriptivo(nombre, marca=""):
-    """
-    Genera un ID más descriptivo combinando marca y hash
-    """
-    # Normalizar inputs
-    nombre_norm = str(nombre).lower().strip()
-    marca_norm = str(marca).lower().strip() if marca else ""
-    
-    # Crear una clave combinada
-    if marca_norm:
-        clave = f"{marca_norm}:{nombre_norm}"
-    else:
-        clave = nombre_norm
-    
-    # Generar hash
-    hash_obj = hashlib.md5(clave.encode('utf-8'))
-    hash_hex = hash_obj.hexdigest()[:8]  # Más corto
-    
-    # Si tenemos marca, crear ID del tipo "MARCA_HASH"
-    if marca_norm:
-        marca_abrev = marca_norm[:4].upper()
-        return f"{marca_abrev}_{hash_hex}"
-    else:
-        return hash_hex
+# ============================================ #
+#          LIMPIEZA DE PRECIOS                 #
+# ============================================ #
 
-# ============================================ #
-#                                              #
-#          LIMPIA PRECIOS                      #
-#                                              #
-# ============================================ #
+def limpiar_precio(precio_texto):
+    """
+    Limpia un texto de precio y lo convierte a float
+    """
+    if not precio_texto or precio_texto == "Precio no disponible":
+        return None
+    
+    try:
+        # Eliminar todo excepto números y comas
+        precio_limpio = re.sub(r'[^\d,]', '', str(precio_texto))
+        # Convertir coma a punto
+        precio_limpio = precio_limpio.replace(',', '.')
+        # Convertir a float
+        return float(precio_limpio)
+    except:
+        return None
 
 def limpiar_columna_precio(df):
     """
-    Limpia la columna precio para extraer valores numéricos
+    Limpia las columnas de precio y las renombra para mantener compatibilidad con histórico
+    
+    FORMATO FINAL:
+    - precio: precio actual/rebajado (numérico)
+    - precio_rebajado: precio original tachado (numérico)
+    - precio_original_texto: texto del precio actual
+    - precio_rebajado_texto: texto del precio original
     """
     print("\n" + "="*60)
-    print("LIMPIANDO COLUMNA PRECIO")
+    print("LIMPIANDO COLUMNAS DE PRECIO")
     print("="*60)
     
     try:
-        # Guardar copia del precio original antes de limpiar
-        if 'precio_original' not in df.columns:
-            df['precio_original'] = df['precio'].copy()
+        # PASO 1: Guardar textos originales con nombres temporales
+        if 'precio_actual_temp' in df.columns:
+            df['texto_precio_actual_temp'] = df['precio_actual_temp'].copy()
+        if 'precio_original_temp' in df.columns:
+            df['texto_precio_original_temp'] = df['precio_original_temp'].copy()
         
-        # Estadísticas antes de limpiar
-        print(f"📊 Total de registros: {len(df)}")
-        print(f"💰 Valores únicos antes de limpiar: {df['precio'].nunique()}")
-        print(f"❌ Valores nulos antes de limpiar: {df['precio'].isna().sum()}")
+        # PASO 2: Limpiar precio actual (será la columna 'precio')
+        if 'precio_actual_temp' in df.columns:
+            print("📊 Limpiando precio actual (precio)...")
+            df['precio'] = df['precio_actual_temp'].apply(limpiar_precio)
+            
+            validos = df['precio'].notna().sum()
+            print(f"   ✅ {validos} precios actuales válidos")
+            if validos > 0:
+                print(f"   📈 Rango: {df['precio'].min():.2f}€ - {df['precio'].max():.2f}€")
+                print(f"   📊 Promedio: {df['precio'].mean():.2f}€")
         
-        # Limpiar la columna precio
-        df['precio'] = (
-            df['precio']
-            .astype(str)
-            .str.replace(r'[^\d,]', '', regex=True)  # Eliminar todo excepto números y comas
-            .str.replace(',', '.', regex=False)  # Convertir comas a puntos
-        )
+        # PASO 3: Limpiar precio original (será la columna 'precio_rebajado')
+        if 'precio_original_temp' in df.columns:
+            print("📊 Limpiando precio original (precio_rebajado)...")
+            df['precio_rebajado'] = df['precio_original_temp'].apply(limpiar_precio)
+            
+            validos = df['precio_rebajado'].notna().sum()
+            print(f"   ✅ {validos} precios originales válidos")
+            if validos > 0:
+                print(f"   📈 Rango: {df['precio_rebajado'].min():.2f}€ - {df['precio_rebajado'].max():.2f}€")
+                print(f"   📊 Promedio: {df['precio_rebajado'].mean():.2f}€")
         
-        # Convertir a float
-        df['precio'] = pd.to_numeric(
-            df['precio'], 
-            errors='coerce'
-        )
+        # PASO 4: Renombrar columnas de texto correctamente
+        if 'texto_precio_actual_temp' in df.columns:
+            df['precio_original_texto'] = df['texto_precio_actual_temp']
+        if 'texto_precio_original_temp' in df.columns:
+            df['precio_rebajado_texto'] = df['texto_precio_original_temp']
         
-        # Estadísticas después de limpiar
-        print(f"✅ Columna precio limpiada exitosamente")
-        print(f"💰 Valores únicos después de limpiar: {df['precio'].nunique()}")
-        print(f"❌ Valores nulos después de limpiar: {df['precio'].isna().sum()}")
-        print(f"📈 Rango de precios: {df['precio'].min():.2f}€ - {df['precio'].max():.2f}€")
-        print(f"📊 Precio promedio: {df['precio'].mean():.2f}€")
-        print(f"📋 Precio mediano: {df['precio'].median():.2f}€")
+        # PASO 5: Eliminar columnas temporales
+        columnas_temp = ['precio_actual_temp', 'precio_original_temp', 
+                        'texto_precio_actual_temp', 'texto_precio_original_temp']
+        df = df.drop(columns=[col for col in columnas_temp if col in df.columns], errors='ignore')
         
-        # Mostrar primeros valores
-        print("\n📋 Primeros 5 valores de precio limpios:")
-        print(df[['precio_original', 'precio']].head())
-        
-        # Contar productos sin precio válido
-        productos_sin_precio_valido = df['precio'].isna().sum()
-        productos_con_precio_valido = len(df) - productos_sin_precio_valido
-        
-        print(f"\n📊 Productos con precio válido: {productos_con_precio_valido}")
-        print(f"⚠️  Productos sin precio válido: {productos_sin_precio_valido}")
-        
-        if productos_sin_precio_valido > 0:
-            print(f"\n🔍 Productos sin precio válido (primeros 5):")
-            sin_precio = df[df['precio'].isna()][['nombre', 'precio_original']].head()
-            if not sin_precio.empty:
-                for idx, row in sin_precio.iterrows():
-                    print(f"   - {row['nombre'][:50]}... : {row['precio_original']}")
+        # PASO 6: Calcular descuentos (precio_rebajado > precio)
+        if 'precio_rebajado' in df.columns and 'precio' in df.columns:
+            mask = (df['precio_rebajado'].notna()) & (df['precio'].notna()) & (df['precio_rebajado'] > df['precio'])
+            
+            if mask.sum() > 0:
+                df.loc[mask, 'descuento_euros'] = df.loc[mask, 'precio_rebajado'] - df.loc[mask, 'precio']
+                df.loc[mask, 'descuento_porcentaje'] = ((df.loc[mask, 'precio_rebajado'] - df.loc[mask, 'precio']) / df.loc[mask, 'precio_rebajado']) * 100
+                
+                print(f"\n💰 Productos con descuento: {mask.sum()}")
+                print(f"   📉 Descuento promedio: {df.loc[mask, 'descuento_porcentaje'].mean():.1f}%")
+                print(f"   💵 Ahorro promedio: {df.loc[mask, 'descuento_euros'].mean():.2f}€")
         
         return df
         
     except Exception as e:
-        print(f"❌ Error limpiando columna precio: {e}")
+        print(f"❌ Error limpiando columnas precio: {e}")
         import traceback
         traceback.print_exc()
         return df
 
 # ============================================ #
-#                                              #
-#       CONFIGURACIÓN GOOGLE DRIVE             #
-#                                              #
+#          GOOGLE DRIVE FUNCTIONS              #
 # ============================================ #
 
 def configurar_google_drive():
-    """
-    Configura y autentica con Google Drive usando credenciales de servicio
-    """
+    """Configura y autentica con Google Drive"""
     try:
         from google.oauth2 import service_account
         from googleapiclient.discovery import build
         
-        # Verificar si hay credenciales disponibles
         credenciales_json = (
             os.environ.get('GOOGLE_CREDENTIALS_JSON_2')
             or os.environ.get('GOOGLE_CREDENTIALS_JSON'))
         
         if not credenciales_json:
-            print("⚠️  No se encontraron credenciales de Google Drive en variables de entorno")
+            print("⚠️  No se encontraron credenciales de Google Drive")
             return None
         
-        # Crear credenciales desde JSON string
         creds_dict = json.loads(credenciales_json)
         scopes = ['https://www.googleapis.com/auth/drive']
         
@@ -201,23 +183,19 @@ def configurar_google_drive():
             creds_dict, scopes=scopes
         )
         
-        # Crear servicio de Google Drive
         service = build('drive', 'v3', credentials=credentials)
-        
         print("✅ Google Drive configurado exitosamente")
         return service
         
     except ImportError:
-        print("❌ Módulos de Google API no instalados. Instala: pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib")
+        print("❌ Módulos de Google API no instalados")
         return None
     except Exception as e:
         print(f"❌ Error configurando Google Drive: {e}")
         return None
 
 def buscar_archivo_drive(service, nombre_archivo, folder_id):
-    """
-    Busca un archivo en Google Drive
-    """
+    """Busca un archivo en Google Drive"""
     try:
         query = f"name = '{nombre_archivo}' and '{folder_id}' in parents and trashed = false"
         results = service.files().list(
@@ -233,39 +211,30 @@ def buscar_archivo_drive(service, nombre_archivo, folder_id):
         return None
 
 def descargar_archivo_drive(service, file_id):
-    """
-    Descarga un archivo de Google Drive.
-    Soporta CSV reales y Google Sheets (exportándolos).
-    """
+    """Descarga un archivo de Google Drive"""
     try:
         from googleapiclient.http import MediaIoBaseDownload
         import io
 
-        # Obtener metadata para saber el tipo de archivo
         metadata = service.files().get(
             fileId=file_id,
             fields="mimeType"
         ).execute()
 
         mime_type = metadata.get("mimeType")
-
         fh = io.BytesIO()
 
-        # 🟢 CASO 1: Google Sheets → EXPORT
         if mime_type == "application/vnd.google-apps.spreadsheet":
             print("📄 Archivo es Google Sheets, exportando como CSV")
             request = service.files().export(
                 fileId=file_id,
                 mimeType="text/csv"
             )
-
-        # 🟢 CASO 2: Archivo binario (CSV real)
         else:
             print("📄 Archivo es binario, descargando directamente")
             request = service.files().get_media(fileId=file_id)
 
         downloader = MediaIoBaseDownload(fh, request)
-
         done = False
         while not done:
             status, done = downloader.next_chunk()
@@ -276,7 +245,6 @@ def descargar_archivo_drive(service, file_id):
         try:
             return contenido_bytes.decode("utf-8")
         except UnicodeDecodeError:
-            print("⚠️ UTF-8 falló, intentando latin-1")
             return contenido_bytes.decode("latin-1")
 
     except Exception as e:
@@ -284,16 +252,11 @@ def descargar_archivo_drive(service, file_id):
         return None
 
 def subir_archivo_drive(service, nombre_archivo, contenido_csv, folder_id, file_id=None):
-    """
-    Sube un archivo CSV a Google Drive.
-    Si file_id se proporciona, actualiza el archivo existente.
-    Si no, crea un nuevo archivo.
-    """
+    """Sube o actualiza un archivo CSV en Google Drive"""
     try:
         from googleapiclient.http import MediaIoBaseUpload
         import io
         
-        # Crear un objeto de bytes del CSV
         csv_bytes = contenido_csv.encode('utf-8')
         media = MediaIoBaseUpload(
             io.BytesIO(csv_bytes), 
@@ -301,7 +264,6 @@ def subir_archivo_drive(service, nombre_archivo, contenido_csv, folder_id, file_
             resumable=False
         )
         
-        # Si hay un file_id, actualizar el archivo existente
         if file_id:
             print(f"📤 Actualizando archivo existente en Drive (ID: {file_id})")
             file = service.files().update(
@@ -309,7 +271,6 @@ def subir_archivo_drive(service, nombre_archivo, contenido_csv, folder_id, file_
                 media_body=media
             ).execute()
             print("✅ Archivo actualizado en Drive")
-        # Si no, crear un nuevo archivo
         else:
             print("📤 Creando nuevo archivo en Drive")
             file_metadata = {
@@ -332,17 +293,16 @@ def subir_archivo_drive(service, nombre_archivo, contenido_csv, folder_id, file_
         traceback.print_exc()
         return False
 
-# Folder de Google Drive donde se guarda el histórico
 def actualizar_csv_drive(
     df_nuevo,
     folder_id="1cSW4uOfw4x61a-R6TAOyn6ejEHNiyX0v",
     nombre_archivo="monitores_mediamarkt.csv"  #cambio de nombre
 ):
+    """Actualiza el CSV histórico en Google Drive"""
     import io
     import pandas as pd
 
     def leer_csv_seguro(contenido):
-        # Eliminar bytes NUL que rompen pandas
         contenido = contenido.replace('\x00', '')
         try:
             return pd.read_csv(
@@ -368,8 +328,8 @@ def actualizar_csv_drive(
 
     if archivo_existente:
         print("📁 Archivo histórico encontrado")
-
         contenido = descargar_archivo_drive(service, archivo_existente["id"])
+        
         if not contenido:
             print("❌ No se pudo descargar el histórico")
             return False
@@ -394,29 +354,26 @@ def actualizar_csv_drive(
     df_combinado = df_combinado.drop_duplicates()
     filas_despues = len(df_combinado)
 
-    print(f"🧹 Duplicados exactos eliminados: {filas_antes - filas_despues}")
+    print(f"🧹 Duplicados eliminados: {filas_antes - filas_despues}")
     print(f"📊 Total final en histórico: {len(df_combinado)}")
 
     csv_contenido = df_combinado.to_csv(index=False, encoding="utf-8")
 
-    # CORRECCIÓN APLICADA: Siempre usar el ID del archivo existente para actualizarlo
     if archivo_existente:
-        # Usar el ID del archivo existente para ACTUALIZARLO (no crear uno nuevo)
         subir_exitoso = subir_archivo_drive(
             service,
             nombre_archivo,
             csv_contenido,
             folder_id,
-            archivo_existente["id"]  # Esto hace que se actualice el mismo archivo
+            archivo_existente["id"]
         )
     else:
-        # Si no existe, crear uno nuevo
         subir_exitoso = subir_archivo_drive(
             service,
             nombre_archivo,
             csv_contenido,
             folder_id,
-            None  # Sin ID para crear nuevo archivo
+            None
         )
 
     if subir_exitoso:
@@ -427,13 +384,11 @@ def actualizar_csv_drive(
         return False
 
 # ============================================ #
-#                                              #
-#      FUNCIONES DEL SCRAPING                  #
-#                                              #
+#          FUNCIONES DE SCRAPING               #
 # ============================================ #
 
 def setup_chrome_options():
-    """Configura Chrome para ejecución headless (optimizado)"""
+    """Configura Chrome para ejecución headless"""
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
@@ -441,7 +396,7 @@ def setup_chrome_options():
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
     
     prefs = {"profile.managed_default_content_settings.images": 2}
     chrome_options.add_experimental_option("prefs", prefs)
@@ -449,7 +404,7 @@ def setup_chrome_options():
     return chrome_options
 
 def mediamark_mob_(url):
-    """Inicializa el navegador Chrome - EXACTLY like old notebook"""
+    """Inicializa el navegador Chrome"""
     try:
         chrome_options = setup_chrome_options()
         service = Service(ChromeDriverManager().install())
@@ -458,16 +413,14 @@ def mediamark_mob_(url):
         driver.get(url)
         time.sleep(2)
 
-        # Aceptar cookies
         try:
             aceptar = driver.find_element(By.ID, "pwa-consent-layer-accept-all-button")
             aceptar.click()
-            print("Cookies aceptadas")
+            print("✅ Cookies aceptadas")
         except Exception as e:
-            print(f"Error aceptando cookies: {e}")
+            print(f"⚠️ Error aceptando cookies: {e}")
 
         time.sleep(3)
-        
         return driver
         
     except Exception as e:
@@ -475,10 +428,7 @@ def mediamark_mob_(url):
         raise
 
 def obtener_total_articulos(driver):
-    """
-    Obtiene el número total de artículos del span y calculas las páginas necesarias
-    EXACTLY like old notebook
-    """
+    """Obtiene el número total de artículos"""
     try:
         elemento_total = driver.find_element(By.CSS_SELECTOR, 'span.sc-94eb08bc-0.AKpzk')
         texto_total = elemento_total.text
@@ -502,59 +452,84 @@ def obtener_total_articulos(driver):
         print(f"❌ Error obteniendo el total de artículos: {e}")
         return None, 10
 
-def extraer_precio_producto(contenedor_producto):
+def extraer_precios_producto(contenedor_producto):
     """
-    Función específica para extraer el precio correcto de un producto
-    EXACTLY like old notebook
+    Extrae AMBOS precios: actual y original (tachado)
+    
+    Returns:
+        tuple: (precio_actual, precio_original_tachado)
+        
+    NOTA: Los nombres aquí son descriptivos, luego se renombrarán en guardar_en_dataframe()
+    para mantener compatibilidad con el formato antiguo del CSV
     """
+    precio_actual = "Precio no disponible"
+    precio_original_tachado = None
+    
     try:
-        try:
-            precio_final = contenedor_producto.find_element(By.CSS_SELECTOR, 'span.sc-94eb08bc-0.dYbTef.sc-8a3a8cd8-2.csCDkt')
-            return precio_final.text
-        except:
-            pass
+        # 1. PRECIO ACTUAL (precio de venta - color rojo/destacado)
+        # Buscar: sc-94eb08bc-0 iJxYPS o similar
+        selectores_actual = [
+            'span.sc-94eb08bc-0.iJxYPS',
+            'span.sc-94eb08bc-0.dYbTef.sc-8a3a8cd8-2.csCDkt',
+            'span[class*="sc-94eb08bc-0"][class*="iJxYPS"]',
+        ]
         
-        try:
-            precio_normal = contenedor_producto.find_element(By.CSS_SELECTOR, 'span.sc-94eb08bc-0.OhHlB.sc-8a3a8cd8-2.csCDkt')
-            return precio_normal.text
-        except:
-            pass
+        for selector in selectores_actual:
+            try:
+                elemento = contenedor_producto.find_element(By.CSS_SELECTOR, selector)
+                precio_actual = elemento.text.strip()
+                if precio_actual and '€' in precio_actual:
+                    break
+            except:
+                continue
         
-        try:
-            elementos_precio = contenedor_producto.find_elements(By.XPATH, ".//*[contains(text(), '€')]")
-            for elem in elementos_precio:
-                texto = elem.text.strip()
-                if '€' in texto and any(c.isdigit() for c in texto):
-                    return texto
-        except:
-            pass
+        # 2. PRECIO ORIGINAL TACHADO (precio antes del descuento - gris tachado)
+        # Buscar: sc-94eb08bc-0 dYbTef sc-a69e154d-2 dJKnju
+        selectores_original_tachado = [
+            'span.sc-94eb08bc-0.dYbTef.sc-a69e154d-2.dJKnju',
+            'span.sc-94eb08bc-0.OhHlB.sc-8a3a8cd8-2.csCDkt',
+            'span[class*="sc-a69e154d-2"]',
+            'span[class*="dJKnju"]',
+        ]
         
-        return "Precio no disponible"
+        for selector in selectores_original_tachado:
+            try:
+                elemento = contenedor_producto.find_element(By.CSS_SELECTOR, selector)
+                precio_original_tachado = elemento.text.strip()
+                if precio_original_tachado and '€' in precio_original_tachado:
+                    break
+            except:
+                continue
+        
+        # 3. Si no encontramos precio actual, buscar cualquier precio
+        if precio_actual == "Precio no disponible":
+            try:
+                elementos_precio = contenedor_producto.find_elements(By.XPATH, ".//*[contains(text(), '€')]")
+                for elem in elementos_precio:
+                    texto = elem.text.strip()
+                    if '€' in texto and any(c.isdigit() for c in texto):
+                        precio_actual = texto
+                        break
+            except:
+                pass
+        
+        return precio_actual, precio_original_tachado
         
     except Exception as e:
-        return f"Error: {e}"
+        return f"Error: {e}", None
 
 def extraer_link_producto(contenedor_producto, driver, profundidad=0, max_profundidad=3):
-    """
-    Extrae el enlace del producto usando múltiples estrategias con esperas.
-    Si no encuentra enlace en el contenedor actual, sube recursivamente en el DOM.
-    """
-    from selenium.webdriver.support.ui import WebDriverWait
-    from selenium.webdriver.support import expected_conditions as EC
-    from selenium.webdriver.common.by import By
-    
+    """Extrae el enlace del producto"""
     if profundidad > max_profundidad:
         return "No disponible"
     
-    # Estrategia 0: Esperar a que el contenedor esté presente y visible
     try:
         WebDriverWait(driver, 2).until(
             lambda d: contenedor_producto.is_displayed()
         )
     except Exception:
-        pass  # Continuar incluso si la espera falla
+        pass
     
-    # Estrategia 1: Buscar un enlace específico para el producto (selector exacto)
     try:
         enlace_element = WebDriverWait(contenedor_producto, 2).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, 'a[data-test="mms-router-link-product-list-item-link_mp"]'))
@@ -562,19 +537,14 @@ def extraer_link_producto(contenedor_producto, driver, profundidad=0, max_profun
         href = enlace_element.get_attribute('href')
         if href and 'mediamarkt' in href:
             resultado = href if href.startswith('http') else f"https://www.mediamarkt.es{href}"
-            print(f"      ✅ Enlace encontrado (Estrategia 1 - Selector exacto)")
             return resultado
     except Exception:
         pass
     
-    # Estrategia 2: Lista de selectores CSS alternativos (más genéricos)
     posibles_selectores = [
         ('a[href*="/p/"]', "Href /p/"),
         ('a[href*="/product/"]', "Href /product/"),
         ('a[data-test*="product-list-item-link"]', "data-test genérico"),
-        ('a[data-test*="product-link"]', "data-test product-link"),
-        ('a.sc-8a3a8cd8-2', "Clase específica del enlace"),
-        ('a[class*="product-link"]', "Clase que contiene product-link"),
         ('a', "Cualquier enlace"),
     ]
     
@@ -583,73 +553,27 @@ def extraer_link_producto(contenedor_producto, driver, profundidad=0, max_profun
             elementos = contenedor_producto.find_elements(By.CSS_SELECTOR, selector)
             for elemento in elementos:
                 href = elemento.get_attribute("href")
-                if not href:
+                if not href or "mediamarkt" not in href:
                     continue
-                
-                # Filtrar enlaces que no sean de productos o sean de tracking
-                if "mediamarkt" not in href:
-                    continue
-                
-                # Verificar patrones típicos de enlaces de producto
                 if "/p/" not in href and "/product/" not in href:
                     continue
-                
-                # Convertir a URL absoluta si es necesario
                 if not href.startswith("http"):
                     href = "https://www.mediamarkt.es" + href
-                
-                print(f"      ✅ Enlace encontrado (Estrategia 2 - {descripcion})")
                 return href
         except Exception:
             continue
     
-    # Estrategia 3: Buscar en elementos que contengan el texto del título del producto
-    try:
-        # Primero obtener el nombre del producto si está disponible
-        nombre_element = contenedor_producto.find_elements(By.CSS_SELECTOR, 'p[data-test="product-title"]')
-        if nombre_element:
-            nombre_producto = nombre_element[0].text
-            # Buscar enlaces que contengan palabras clave del nombre del producto
-            enlaces = contenedor_producto.find_elements(By.TAG_NAME, "a")
-            for enlace in enlaces:
-                href = enlace.get_attribute('href')
-                if href and 'mediamarkt' in href and any(keyword in href.lower() for keyword in ['p-', 'product-', '/p/', '/product/']):
-                    resultado = href if href.startswith('http') else f"https://www.mediamarkt.es{href}"
-                    print(f"      ✅ Enlace encontrado (Estrategia 3 - Por título del producto)")
-                    return resultado
-    except Exception:
-        pass
-    
-    # Estrategia 4: Subir recursivamente en el DOM (como último recurso)
     if profundidad < max_profundidad:
         try:
             padre = contenedor_producto.find_element(By.XPATH, "./..")
-            print(f"      🔍 Subiendo al elemento padre (profundidad: {profundidad+1})")
             return extraer_link_producto(padre, driver, profundidad+1, max_profundidad)
-        except Exception as e:
-            print(f"      ⚠️  No se pudo subir al elemento padre: {e}")
+        except Exception:
+            pass
     
-    # Estrategia 5: Verificar si el contenedor ES un enlace
-    try:
-        tag_name = contenedor_producto.tag_name.lower()
-        if tag_name == 'a':
-            href = contenedor_producto.get_attribute('href')
-            if href and 'mediamarkt' in href:
-                resultado = href if href.startswith('http') else f"https://www.mediamarkt.es{href}"
-                print(f"      ✅ Enlace encontrado (Estrategia 5 - El contenedor es un enlace)")
-                return resultado
-    except Exception:
-        pass
-    
-    # Si ninguna estrategia funcionó
-    print(f"      ⚠️  No se pudo extraer enlace (profundidad: {profundidad})")
     return "No disponible"
 
 def extraer_productos_pagina(driver):
-    """
-    Extrae los productos de una sola página
-    EXACTAMENTE igual que el código original
-    """
+    """Extrae los productos de una sola página"""
     productos_pagina = []
 
     try:
@@ -660,7 +584,7 @@ def extraer_productos_pagina(driver):
             try:
                 nombre = titulo.text.strip()
 
-                # 🔗 ENLACE (ancestro <a>)
+                # ENLACE
                 try:
                     enlace_elem = titulo.find_element(By.XPATH, ".//ancestor::a[1]")
                     enlace = enlace_elem.get_attribute("href")
@@ -669,7 +593,7 @@ def extraer_productos_pagina(driver):
                 except Exception:
                     enlace = "No disponible"
 
-                # 🧱 CONTENEDOR — MISMA LÓGICA QUE EL NOTEBOOK
+                # CONTENEDOR
                 contenedor = titulo
                 for _ in range(5):
                     contenedor = contenedor.find_element(By.XPATH, "./..")
@@ -677,19 +601,21 @@ def extraer_productos_pagina(driver):
                     if precios:
                         break
 
-                # 💰 PRECIO
-                precio = extraer_precio_producto(contenedor)
+                # PRECIOS (AMBOS)
+                # Usamos nombres temporales que luego se renombrarán
+                precio_actual, precio_original_tachado = extraer_precios_producto(contenedor)
 
-                # 🏷️ MARCA
+                # MARCA
                 marca = extraer_marca(nombre)
 
-                # 🆔 ID CONSISTENTE
+                # ID
                 producto_id = generar_id_consistente(nombre)
 
                 productos_pagina.append({
                     'id': producto_id,
                     'nombre': nombre,
-                    'precio': precio,
+                    'precio_actual_temp': precio_actual,  # Será 'precio'
+                    'precio_original_temp': precio_original_tachado,  # Será 'precio_rebajado'
                     'marca': marca,
                     'enlace': enlace
                 })
@@ -703,12 +629,9 @@ def extraer_productos_pagina(driver):
     except Exception as e:
         print(f"❌ Error extrayendo productos de la página: {e}")
         return productos_pagina
-    
-    
+
 def extraer_productos(driver):
-    """
-    Extrae todos los productos EXACTLY like old notebook
-    """
+    """Extrae todos los productos"""
     productos_data = []
     contador_global = 1
     
@@ -729,7 +652,7 @@ def extraer_productos(driver):
         productos_unicos = set()
         
         for criterio in criterios_ordenacion:
-            print(f"🎯 Usando criterio de ordenación: {criterio}")
+            print(f"\n🎯 Usando criterio de ordenación: {criterio}")
             
             for pagina in range(1, 31):
                 try:
@@ -745,7 +668,7 @@ def extraer_productos(driver):
                             EC.presence_of_element_located((By.CSS_SELECTOR, 'p[data-test="product-title"]'))
                         )
                     except:
-                        print(f"❌ La página {pagina} no cargó correctamente, pasando a siguiente criterio")
+                        print(f"❌ La página {pagina} no cargó correctamente")
                         break
                     
                     productos_pagina = extraer_productos_pagina(driver)
@@ -770,7 +693,7 @@ def extraer_productos(driver):
                     print(f"❌ Error en página {pagina}: {e}")
                     continue
         
-        print(f"\n📊 Resumen final: {len(productos_data)} productos únicos de {len(criterios_ordenacion)} criterios")
+        print(f"\n📊 Resumen final: {len(productos_data)} productos únicos")
         
         if total_articulos:
             porcentaje = (len(productos_data) / total_articulos) * 100
@@ -785,58 +708,73 @@ def extraer_productos(driver):
 def guardar_en_dataframe(productos_data):
     """
     Convierte la lista de productos en un DataFrame y lo guarda en CSV
-    EXACTLY like old notebook - MODIFICADO para incluir enlaces
+    
+    FORMATO FINAL DE COLUMNAS (compatible con histórico):
+    - fecha_extraccion
+    - id
+    - numero
+    - nombre
+    - marca
+    - precio (precio actual/rebajado)
+    - enlace
+    - precio_rebajado (precio original tachado)
+    - descuento_euros (opcional)
+    - descuento_porcentaje (opcional)
+    - precio_original_texto (texto del precio actual)
+    - precio_rebajado_texto (texto del precio original)
     """
     if not productos_data:
         print("No hay datos para guardar")
-        return None
+        return None, None
     
     df = pd.DataFrame(productos_data)
     
     fecha_extraccion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     df['fecha_extraccion'] = fecha_extraccion
     
-    # Verificar si ya tenemos IDs generados
     if 'id' not in df.columns:
         print("\n" + "="*60)
         print("GENERANDO IDs ÚNICOS PARA PRODUCTOS")
         print("="*60)
-        # Si no hay columna 'id', generamos los IDs
         df['id'] = df['nombre'].apply(generar_id_consistente)
         print(f"✅ IDs generados para {len(df)} productos")
         print(f"📊 IDs únicos: {df['id'].nunique()}")
-        print(f"🔍 Ejemplo de IDs generados:")
-        for i, (nombre, producto_id) in enumerate(zip(df['nombre'].head(3), df['id'].head(3))):
-            print(f"   {i+1}. {nombre[:30]}... → ID: {producto_id}")
     
-    # Limpiar columna precio
+    # Limpiar columnas de precio (esto renombra las columnas correctamente)
     df = limpiar_columna_precio(df)
     
-    # Orden de columnas con ID incluido - AÑADIDO 'enlace'
-    column_order = ['fecha_extraccion', 'id', 'numero', 'nombre', 'marca', 'precio', 'enlace']
-    if 'precio_original' in df.columns:
-        column_order.append('precio_original')
+    # Orden de columnas (formato antiguo compatible)
+    column_order = [
+        'fecha_extraccion', 'id', 'numero', 'nombre', 'marca',
+        'precio', 'enlace', 'precio_rebajado'
+    ]
+    
+    # Agregar columnas calculadas si existen
+    if 'descuento_euros' in df.columns:
+        column_order.append('descuento_euros')
+    if 'descuento_porcentaje' in df.columns:
+        column_order.append('descuento_porcentaje')
+    
+    # Agregar columnas de texto al final
+    if 'precio_original_texto' in df.columns:
+        column_order.append('precio_original_texto')
+    if 'precio_rebajado_texto' in df.columns:
+        column_order.append('precio_rebajado_texto')
     
     # Asegurar que todas las columnas existan
     existing_columns = [col for col in column_order if col in df.columns]
-    missing_columns = [col for col in column_order if col not in df.columns]
-    
-    if missing_columns:
-        print(f"⚠️  Advertencia: Columnas faltantes en DataFrame: {missing_columns}")
-    
     df = df[existing_columns]
     
     os.makedirs("scraping_results", exist_ok=True)
 
-    nombre_archivo = f"scraping_results/monitores_mediamarkt_completo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-    file_path = nombre_archivo
-    df.to_csv(file_path, index=False, encoding='utf-8')
+    nombre_archivo = f"scraping_results/monitores_mediamarkt_completo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv" #cambio de nombre
+    df.to_csv(nombre_archivo, index=False, encoding='utf-8')
     
-    print(f"\n✅ Datos guardados en: {file_path}")
+    print(f"\n✅ Datos guardados en: {nombre_archivo}")
     print(f"📊 Total de productos únicos: {len(df)}")
     
     # Estadísticas de marcas
-    print(f"🏷️  Distribución de marcas:")
+    print(f"\n🏷️  Distribución de marcas:")
     distribucion_marcas = df['marca'].value_counts()
     for marca, cantidad in distribucion_marcas.head(10).items():
         print(f"   {marca}: {cantidad} productos")
@@ -847,54 +785,58 @@ def guardar_en_dataframe(productos_data):
     # Estadísticas de IDs
     print(f"\n🔑 Estadísticas de IDs:")
     print(f"   IDs únicos: {df['id'].nunique()}")
-    print(f"   Productos duplicados (mismo ID): {len(df) - df['id'].nunique()}")
-    
-    if df['id'].nunique() < len(df):
-        print(f"   ⚠️  Hay {len(df) - df['id'].nunique()} productos con IDs duplicados")
-        duplicados = df[df.duplicated('id', keep=False)]
-        print(f"   📋 Productos con IDs duplicados (primeros 3):")
-        for _, row in duplicados.head(3).iterrows():
-            print(f"      - ID: {row['id']} → {row['nombre'][:40]}...")
+    productos_duplicados = len(df) - df['id'].nunique()
+    if productos_duplicados > 0:
+        print(f"   ⚠️  Productos duplicados (mismo ID): {productos_duplicados}")
     
     # Estadísticas de precios
-    productos_con_precio_valido = df['precio'].notna().sum()
-    productos_sin_precio_valido = df['precio'].isna().sum()
+    if 'precio' in df.columns:
+        productos_con_precio = df['precio'].notna().sum()
+        print(f"\n💰 Productos con precio válido: {productos_con_precio}")
+        
+        if productos_con_precio > 0:
+            print(f"   📈 Precio promedio: {df['precio'].mean():.2f}€")
+            print(f"   📊 Precio mediano: {df['precio'].median():.2f}€")
+            print(f"   📉 Precio mínimo: {df['precio'].min():.2f}€")
+            print(f"   📈 Precio máximo: {df['precio'].max():.2f}€")
     
-    print(f"\n💰 Productos con precio válido: {productos_con_precio_valido}")
-    print(f"⚠️  Productos sin precio válido: {productos_sin_precio_valido}")
+    # Estadísticas de descuentos
+    if 'descuento_porcentaje' in df.columns:
+        productos_con_descuento = df['descuento_porcentaje'].notna().sum()
+        if productos_con_descuento > 0:
+            print(f"\n💸 Productos con descuento: {productos_con_descuento}")
+            print(f"   📉 Descuento promedio: {df['descuento_porcentaje'].mean():.1f}%")
+            print(f"   💵 Ahorro promedio: {df['descuento_euros'].mean():.2f}€")
+            print(f"   🎯 Mayor descuento: {df['descuento_porcentaje'].max():.1f}%")
     
-    if productos_con_precio_valido > 0:
-        print(f"📈 Precio promedio: {df['precio'].mean():.2f}€")
-        print(f"📊 Precio mediano: {df['precio'].median():.2f}€")
-        print(f"📉 Precio mínimo: {df['precio'].min():.2f}€")
-        print(f"📈 Precio máximo: {df['precio'].max():.2f}€")
+    # Estadísticas de precios originales
+    if 'precio_rebajado' in df.columns:
+        productos_con_precio_original = df['precio_rebajado'].notna().sum()
+        if productos_con_precio_original > 0:
+            print(f"\n🏷️  Productos con precio original (tachado): {productos_con_precio_original}")
     
     # Estadísticas de enlaces
-    enlaces_validos = df[df['enlace'] != 'No disponible']['enlace'].count()
-    print(f"\n🔗 Enlaces extraídos: {enlaces_validos} de {len(df)} productos")
-    
-    # Mostrar algunos enlaces de ejemplo
-    if enlaces_validos > 0:
-        print(f"📋 Ejemplos de enlaces extraídos:")
-        for i, row in df[df['enlace'] != 'No disponible'].head(3).iterrows():
-            print(f"   {row['nombre'][:30]}...")
-            print(f"     → {row['enlace']}")
+    if 'enlace' in df.columns:
+        enlaces_validos = df[df['enlace'] != 'No disponible']['enlace'].count()
+        print(f"\n🔗 Enlaces extraídos: {enlaces_validos} de {len(df)} productos")
     
     print("\n📋 Primeras 5 filas del DataFrame:")
     print(df.head())
     
-    return df, file_path
+    print("\n📋 Estructura de columnas:")
+    print(f"   Columnas: {list(df.columns)}")
+    
+    return df, nombre_archivo
 
 # ============================================ #
-#                                              #
-#      FUNCION PRINCIPAL                       #
-#                                              #
+#          FUNCION PRINCIPAL                   #
 # ============================================ #
 
 def main():
     """Función principal"""
     print("="*60)
-    print("SCRAPING DE Monitores - MEDIAMARKT")
+    print("SCRAPING DE monitores - MEDIAMARKT")
+    print("Con extracción de PRECIO ACTUAL y PRECIO ORIGINAL")
     print("="*60)
     print(f"Fecha y hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
@@ -911,7 +853,7 @@ def main():
         productos_data = extraer_productos(driver)
         
         if not productos_data:
-            print("No se extrajeron productos")
+            print("❌ No se extrajeron productos")
             return False
         
         df, archivo_csv = guardar_en_dataframe(productos_data)
@@ -929,7 +871,7 @@ def main():
         if drive_actualizado:
             print("✅ Google Drive actualizado exitosamente (APPEND)")
         else:
-            print("⚠️  No se pudo actualizar Google Drive (puede ser falta de credenciales)")
+            print("⚠️  No se pudo actualizar Google Drive")
         
         print("\n" + "="*60)
         print("RESUMEN EJECUCIÓN")
@@ -938,15 +880,35 @@ def main():
         print(f"📦 Productos obtenidos hoy: {len(df)}")
         print(f"🔑 IDs únicos generados: {df['id'].nunique()}")
         print(f"🏷️  Marcas diferentes encontradas: {df['marca'].nunique()}")
-        print(f"💰 Precios válidos obtenidos: {df['precio'].notna().sum()}")
-        print(f"🔗 Enlaces extraídos: {df[df['enlace'] != 'No disponible']['enlace'].count()}")
+        
+        if 'precio' in df.columns:
+            precios_validos = df['precio'].notna().sum()
+            print(f"💰 Precios actuales válidos: {precios_validos}")
+        
+        if 'precio_rebajado' in df.columns:
+            precios_originales = df['precio_rebajado'].notna().sum()
+            print(f"🏷️  Precios originales (tachados) extraídos: {precios_originales}")
+        
+        if 'descuento_porcentaje' in df.columns:
+            productos_descuento = df['descuento_porcentaje'].notna().sum()
+            print(f"💸 Productos con descuento: {productos_descuento}")
+        
+        if 'enlace' in df.columns:
+            enlaces_validos = df[df['enlace'] != 'No disponible']['enlace'].count()
+            print(f"🔗 Enlaces extraídos: {enlaces_validos}")
+        
         print(f"📁 Archivo local generado: {archivo_csv}")
         print(f"💾 Google Drive: Datos añadidos al archivo histórico")
+        
+        print("\n📋 ESTRUCTURA FINAL DEL CSV:")
+        print("   - precio: precio actual de venta")
+        print("   - precio_rebajado: precio original (antes del descuento)")
+        print("   - Compatible con formato histórico antiguo ✅")
         
         return True
             
     except Exception as e:
-        print(f"Error en la ejecución: {e}")
+        print(f"❌ Error en la ejecución: {e}")
         import traceback
         traceback.print_exc()
         return False
