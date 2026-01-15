@@ -39,7 +39,7 @@ marcas_ebooks = [
     'dell', 'hp', 'acer', 'samsung', 'lg', 'microsoft', 'apple'
 ]
 
-def extraer_marca_ebook(nombre):
+def extraer_marca(nombre):
     """Función para extraer la marca del ebook del nombre"""
     if pd.isna(nombre):
         return 'Desconocido'
@@ -136,43 +136,66 @@ def limpiar_precio(precio_texto):
         return None
 
 def limpiar_columna_precio(df):
-    """Limpia las columnas de precio para extraer valores numéricos"""
+    """
+    Limpia las columnas de precio y las renombra para mantener compatibilidad con histórico
+    
+    FORMATO FINAL:
+    - precio: precio actual/rebajado (numérico)
+    - precio_rebajado: precio original tachado (numérico)
+    - precio_original_texto: texto del precio actual
+    - precio_rebajado_texto: texto del precio original
+    """
     print("\n" + "="*60)
     print("LIMPIANDO COLUMNAS DE PRECIO")
     print("="*60)
     
     try:
-        # Limpiar precio_rebajado
-        if 'precio_rebajado' in df.columns:
-            print("📊 Limpiando precio_rebajado...")
-            df['precio_rebajado_texto'] = df['precio_rebajado'].copy()
-            df['precio_rebajado'] = df['precio_rebajado_texto'].apply(limpiar_precio)
+        # PASO 1: Guardar textos originales con nombres temporales
+        if 'precio_actual_temp' in df.columns:
+            df['texto_precio_actual_temp'] = df['precio_actual_temp'].copy()
+        if 'precio_original_temp' in df.columns:
+            df['texto_precio_original_temp'] = df['precio_original_temp'].copy()
+        
+        # PASO 2: Limpiar precio actual (será la columna 'precio')
+        if 'precio_actual_temp' in df.columns:
+            print("📊 Limpiando precio actual (precio)...")
+            df['precio'] = df['precio_actual_temp'].apply(limpiar_precio)
+            
+            validos = df['precio'].notna().sum()
+            print(f"   ✅ {validos} precios actuales válidos")
+            if validos > 0:
+                print(f"   📈 Rango: {df['precio'].min():.2f}€ - {df['precio'].max():.2f}€")
+                print(f"   📊 Promedio: {df['precio'].mean():.2f}€")
+        
+        # PASO 3: Limpiar precio original (será la columna 'precio_rebajado')
+        if 'precio_original_temp' in df.columns:
+            print("📊 Limpiando precio original (precio_rebajado)...")
+            df['precio_rebajado'] = df['precio_original_temp'].apply(limpiar_precio)
             
             validos = df['precio_rebajado'].notna().sum()
-            print(f"   ✅ {validos} precios rebajados válidos")
+            print(f"   ✅ {validos} precios originales válidos")
             if validos > 0:
                 print(f"   📈 Rango: {df['precio_rebajado'].min():.2f}€ - {df['precio_rebajado'].max():.2f}€")
                 print(f"   📊 Promedio: {df['precio_rebajado'].mean():.2f}€")
         
-        # Limpiar precio_original
-        if 'precio_original' in df.columns:
-            print("📊 Limpiando precio_original...")
-            df['precio_original_texto'] = df['precio_original'].copy()
-            df['precio_original'] = df['precio_original_texto'].apply(limpiar_precio)
-            
-            validos = df['precio_original'].notna().sum()
-            print(f"   ✅ {validos} precios originales válidos")
-            if validos > 0:
-                print(f"   📈 Rango: {df['precio_original'].min():.2f}€ - {df['precio_original'].max():.2f}€")
-                print(f"   📊 Promedio: {df['precio_original'].mean():.2f}€")
+        # PASO 4: Renombrar columnas de texto correctamente
+        if 'texto_precio_actual_temp' in df.columns:
+            df['precio_original_texto'] = df['texto_precio_actual_temp']
+        if 'texto_precio_original_temp' in df.columns:
+            df['precio_rebajado_texto'] = df['texto_precio_original_temp']
         
-        # Calcular descuentos
-        if 'precio_original' in df.columns and 'precio_rebajado' in df.columns:
-            mask = (df['precio_original'].notna()) & (df['precio_rebajado'].notna()) & (df['precio_original'] > df['precio_rebajado'])
+        # PASO 5: Eliminar columnas temporales
+        columnas_temp = ['precio_actual_temp', 'precio_original_temp', 
+                        'texto_precio_actual_temp', 'texto_precio_original_temp']
+        df = df.drop(columns=[col for col in columnas_temp if col in df.columns], errors='ignore')
+        
+        # PASO 6: Calcular descuentos (precio_rebajado > precio)
+        if 'precio_rebajado' in df.columns and 'precio' in df.columns:
+            mask = (df['precio_rebajado'].notna()) & (df['precio'].notna()) & (df['precio_rebajado'] > df['precio'])
             
             if mask.sum() > 0:
-                df.loc[mask, 'descuento_euros'] = df.loc[mask, 'precio_original'] - df.loc[mask, 'precio_rebajado']
-                df.loc[mask, 'descuento_porcentaje'] = ((df.loc[mask, 'precio_original'] - df.loc[mask, 'precio_rebajado']) / df.loc[mask, 'precio_original']) * 100
+                df.loc[mask, 'descuento_euros'] = df.loc[mask, 'precio_rebajado'] - df.loc[mask, 'precio']
+                df.loc[mask, 'descuento_porcentaje'] = ((df.loc[mask, 'precio_rebajado'] - df.loc[mask, 'precio']) / df.loc[mask, 'precio_rebajado']) * 100
                 
                 print(f"\n💰 Productos con descuento: {mask.sum()}")
                 print(f"   📉 Descuento promedio: {df.loc[mask, 'descuento_porcentaje'].mean():.1f}%")
@@ -482,63 +505,66 @@ def obtener_total_articulos(driver):
 
 def extraer_precios_producto(contenedor_producto):
     """
-    Extrae AMBOS precios: original (tachado) y rebajado (actual)
+    Extrae AMBOS precios: actual y original (tachado)
     
     Returns:
-        tuple: (precio_rebajado, precio_original)
+        tuple: (precio_actual, precio_original_tachado)
+        
+    NOTA: Los nombres aquí son descriptivos, luego se renombrarán en guardar_en_dataframe()
+    para mantener compatibilidad con el formato antiguo del CSV
     """
-    precio_rebajado = "Precio no disponible"
-    precio_original = None
+    precio_actual = "Precio no disponible"
+    precio_original_tachado = None
     
     try:
-        # 1. PRECIO REBAJADO (precio actual - color rojo generalmente)
+        # 1. PRECIO ACTUAL (precio de venta - color rojo/destacado)
         # Buscar: sc-94eb08bc-0 iJxYPS o similar
-        selectores_rebajado = [
+        selectores_actual = [
             'span.sc-94eb08bc-0.iJxYPS',
             'span.sc-94eb08bc-0.dYbTef.sc-8a3a8cd8-2.csCDkt',
             'span[class*="sc-94eb08bc-0"][class*="iJxYPS"]',
         ]
         
-        for selector in selectores_rebajado:
+        for selector in selectores_actual:
             try:
                 elemento = contenedor_producto.find_element(By.CSS_SELECTOR, selector)
-                precio_rebajado = elemento.text.strip()
-                if precio_rebajado and '€' in precio_rebajado:
+                precio_actual = elemento.text.strip()
+                if precio_actual and '€' in precio_actual:
                     break
             except:
                 continue
         
-        # 2. PRECIO ORIGINAL (precio tachado - gris)
+        # 2. PRECIO ORIGINAL TACHADO (precio antes del descuento - gris tachado)
         # Buscar: sc-94eb08bc-0 dYbTef sc-a69e154d-2 dJKnju
-        selectores_original = [
+        selectores_original_tachado = [
             'span.sc-94eb08bc-0.dYbTef.sc-a69e154d-2.dJKnju',
             'span.sc-94eb08bc-0.OhHlB.sc-8a3a8cd8-2.csCDkt',
             'span[class*="sc-a69e154d-2"]',
             'span[class*="dJKnju"]',
         ]
         
-        for selector in selectores_original:
+        for selector in selectores_original_tachado:
             try:
                 elemento = contenedor_producto.find_element(By.CSS_SELECTOR, selector)
-                precio_original = elemento.text.strip()
-                if precio_original and '€' in precio_original:
+                precio_original_tachado = elemento.text.strip()
+                if precio_original_tachado and '€' in precio_original_tachado:
                     break
             except:
                 continue
         
-        # 3. Si no encontramos precio rebajado, buscar cualquier precio
-        if precio_rebajado == "Precio no disponible":
+        # 3. Si no encontramos precio actual, buscar cualquier precio
+        if precio_actual == "Precio no disponible":
             try:
                 elementos_precio = contenedor_producto.find_elements(By.XPATH, ".//*[contains(text(), '€')]")
                 for elem in elementos_precio:
                     texto = elem.text.strip()
                     if '€' in texto and any(c.isdigit() for c in texto):
-                        precio_rebajado = texto
+                        precio_actual = texto
                         break
             except:
                 pass
         
-        return precio_rebajado, precio_original
+        return precio_actual, precio_original_tachado
         
     except Exception as e:
         return f"Error: {e}", None
@@ -627,10 +653,11 @@ def extraer_productos_pagina(driver):
                         break
 
                 # PRECIOS (AMBOS)
-                precio_rebajado, precio_original = extraer_precios_producto(contenedor)
+                # Usamos nombres temporales que luego se renombrarán
+                precio_actual, precio_original_tachado = extraer_precios_producto(contenedor)
 
                 # MARCA
-                marca = extraer_marca_ebook(nombre)
+                marca = extraer_marca(nombre)
 
                 # ID
                 producto_id = generar_id_consistente(nombre)
@@ -638,8 +665,8 @@ def extraer_productos_pagina(driver):
                 productos_pagina.append({
                     'id': producto_id,
                     'nombre': nombre,
-                    'precio_rebajado': precio_rebajado,
-                    'precio_original': precio_original,
+                    'precio_actual_temp': precio_actual,  # Será 'precio'
+                    'precio_original_temp': precio_original_tachado,  # Será 'precio_rebajado'
                     'marca': marca,
                     'enlace': enlace
                 })
@@ -730,7 +757,23 @@ def extraer_productos(driver):
         return productos_data
 
 def guardar_en_dataframe(productos_data):
-    """Convierte la lista de productos en un DataFrame y lo guarda en CSV"""
+    """
+    Convierte la lista de productos en un DataFrame y lo guarda en CSV
+    
+    FORMATO FINAL DE COLUMNAS (compatible con histórico):
+    - fecha_extraccion
+    - id
+    - numero
+    - nombre
+    - marca
+    - precio (precio actual/rebajado)
+    - enlace
+    - precio_rebajado (precio original tachado)
+    - descuento_euros (opcional)
+    - descuento_porcentaje (opcional)
+    - precio_original_texto (texto del precio actual)
+    - precio_rebajado_texto (texto del precio original)
+    """
     if not productos_data:
         print("No hay datos para guardar")
         return None, None
@@ -748,26 +791,26 @@ def guardar_en_dataframe(productos_data):
         print(f"✅ IDs generados para {len(df)} productos")
         print(f"📊 IDs únicos: {df['id'].nunique()}")
     
-    # Limpiar columnas de precio
+    # Limpiar columnas de precio (esto renombra las columnas correctamente)
     df = limpiar_columna_precio(df)
     
-    # Orden de columnas
+    # Orden de columnas (formato antiguo compatible)
     column_order = [
         'fecha_extraccion', 'id', 'numero', 'nombre', 'marca',
-        'precio_rebajado', 'precio_original', 'enlace'
+        'precio', 'enlace', 'precio_rebajado'
     ]
     
     # Agregar columnas calculadas si existen
     if 'descuento_euros' in df.columns:
-        column_order.insert(-1, 'descuento_euros')
+        column_order.append('descuento_euros')
     if 'descuento_porcentaje' in df.columns:
-        column_order.insert(-1, 'descuento_porcentaje')
+        column_order.append('descuento_porcentaje')
     
-    # Agregar columnas de texto si existen
-    if 'precio_rebajado_texto' in df.columns:
-        column_order.append('precio_rebajado_texto')
+    # Agregar columnas de texto al final
     if 'precio_original_texto' in df.columns:
         column_order.append('precio_original_texto')
+    if 'precio_rebajado_texto' in df.columns:
+        column_order.append('precio_rebajado_texto')
     
     # Asegurar que todas las columnas existan
     existing_columns = [col for col in column_order if col in df.columns]
@@ -798,15 +841,15 @@ def guardar_en_dataframe(productos_data):
         print(f"   ⚠️  Productos duplicados (mismo ID): {productos_duplicados}")
     
     # Estadísticas de precios
-    if 'precio_rebajado' in df.columns:
-        productos_con_precio = df['precio_rebajado'].notna().sum()
-        print(f"\n💰 Productos con precio rebajado válido: {productos_con_precio}")
+    if 'precio' in df.columns:
+        productos_con_precio = df['precio'].notna().sum()
+        print(f"\n💰 Productos con precio válido: {productos_con_precio}")
         
         if productos_con_precio > 0:
-            print(f"   📈 Precio promedio: {df['precio_rebajado'].mean():.2f}€")
-            print(f"   📊 Precio mediano: {df['precio_rebajado'].median():.2f}€")
-            print(f"   📉 Precio mínimo: {df['precio_rebajado'].min():.2f}€")
-            print(f"   📈 Precio máximo: {df['precio_rebajado'].max():.2f}€")
+            print(f"   📈 Precio promedio: {df['precio'].mean():.2f}€")
+            print(f"   📊 Precio mediano: {df['precio'].median():.2f}€")
+            print(f"   📉 Precio mínimo: {df['precio'].min():.2f}€")
+            print(f"   📈 Precio máximo: {df['precio'].max():.2f}€")
     
     # Estadísticas de descuentos
     if 'descuento_porcentaje' in df.columns:
@@ -817,6 +860,12 @@ def guardar_en_dataframe(productos_data):
             print(f"   💵 Ahorro promedio: {df['descuento_euros'].mean():.2f}€")
             print(f"   🎯 Mayor descuento: {df['descuento_porcentaje'].max():.1f}%")
     
+    # Estadísticas de precios originales
+    if 'precio_rebajado' in df.columns:
+        productos_con_precio_original = df['precio_rebajado'].notna().sum()
+        if productos_con_precio_original > 0:
+            print(f"\n🏷️  Productos con precio original (tachado): {productos_con_precio_original}")
+    
     # Estadísticas de enlaces
     if 'enlace' in df.columns:
         enlaces_validos = df[df['enlace'] != 'No disponible']['enlace'].count()
@@ -824,6 +873,9 @@ def guardar_en_dataframe(productos_data):
     
     print("\n📋 Primeras 5 filas del DataFrame:")
     print(df.head())
+    
+    print("\n📋 Estructura de columnas:")
+    print(f"   Columnas: {list(df.columns)}")
     
     return df, nombre_archivo
 
@@ -835,7 +887,7 @@ def main():
     """Función principal"""
     print("="*60)
     print("SCRAPING DE EBOOKS - MEDIAMARKT")
-    print("Con extracción de PRECIO ORIGINAL y PRECIO REBAJADO")
+    print("Con extracción de PRECIO ACTUAL y PRECIO ORIGINAL")
     print("="*60)
     print(f"Fecha y hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
@@ -880,13 +932,13 @@ def main():
         print(f"🔑 IDs únicos generados: {df['id'].nunique()}")
         print(f"🏷️  Marcas diferentes encontradas: {df['marca'].nunique()}")
         
-        if 'precio_rebajado' in df.columns:
-            precios_validos = df['precio_rebajado'].notna().sum()
-            print(f"💰 Precios rebajados válidos: {precios_validos}")
+        if 'precio' in df.columns:
+            precios_validos = df['precio'].notna().sum()
+            print(f"💰 Precios actuales válidos: {precios_validos}")
         
-        if 'precio_original' in df.columns:
-            precios_originales = df['precio_original'].notna().sum()
-            print(f"💵 Precios originales extraídos: {precios_originales}")
+        if 'precio_rebajado' in df.columns:
+            precios_originales = df['precio_rebajado'].notna().sum()
+            print(f"🏷️  Precios originales (tachados) extraídos: {precios_originales}")
         
         if 'descuento_porcentaje' in df.columns:
             productos_descuento = df['descuento_porcentaje'].notna().sum()
@@ -898,6 +950,11 @@ def main():
         
         print(f"📁 Archivo local generado: {archivo_csv}")
         print(f"💾 Google Drive: Datos añadidos al archivo histórico")
+        
+        print("\n📋 ESTRUCTURA FINAL DEL CSV:")
+        print("   - precio: precio actual de venta")
+        print("   - precio_rebajado: precio original (antes del descuento)")
+        print("   - Compatible con formato histórico antiguo ✅")
         
         return True
             
